@@ -1601,7 +1601,7 @@ ${bodyHtml}
       { header: "Inquilino", dataKey: "nombre" },
       { header: "Hab.", dataKey: "hab" },
       { header: "Pers.", dataKey: "pers" },
-      ...servicios.map(s => ({ header: s.label, dataKey: `srv_${s.id}` })),
+      ...servicios.map(s => ({ header: `${s.icon} ${s.label}`, dataKey: `srv_${s.id}` })),
       { header: "Total", dataKey: "total" },
       { header: "Estado", dataKey: "estado" },
     ];
@@ -1635,50 +1635,87 @@ ${bodyHtml}
 
     const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
     const pw = doc.internal.pageSize.getWidth();
-    doc.setFontSize(8);
-    doc.text(cfg.orgNombre, pw / 2, 15, { align: "center" });
+    const green = [6, 95, 70];
+    const lightGray = [241, 245, 249];
+
+    doc.setFontSize(9);
+    doc.setTextColor(...green);
+    doc.text(cfg.orgNombre, pw / 2, 14, { align: "center" });
     doc.setFontSize(16);
     doc.setFont(undefined, "bold");
-    doc.text("Informe de Liquidaci\u00f3n", pw / 2, 22, { align: "center" });
+    doc.setTextColor(30, 41, 59);
+    doc.text("Informe de Liquidaci\u00f3n", pw / 2, 21, { align: "center" });
     doc.setFont(undefined, "normal");
     doc.setFontSize(12);
+    doc.setTextColor(100, 116, 139);
     doc.text(label, pw / 2, 28, { align: "center" });
 
     doc.setFontSize(10);
-    doc.text(`Total: Bs.- ${fmtMoney(totalesLiq)}`, 14, 36);
-    doc.text(`Pagado(s): ${pagados}`, 14, 42);
-    doc.text(`Pendiente(s): ${pendientes}`, 14, 48);
+    doc.setTextColor(30, 41, 59);
+    doc.text("Total:", 14, 36);
+    doc.setFont(undefined, "bold");
+    doc.text(`Bs.- ${fmtMoney(totalesLiq)}`, 40, 36);
+    doc.setFont(undefined, "normal");
+    doc.setTextColor(6, 95, 70);
+    doc.text(`Pagado(s): ${pagados}`, 85, 36);
+    doc.setTextColor(180, 83, 9);
+    doc.text(`Pendiente(s): ${pendientes}`, 125, 36);
 
-    let yStart = 54;
+    let yStart = 44;
     if (tarifas.length > 0) {
-      doc.setFontSize(9);
+      yStart = 50;
+      doc.setDrawColor(226, 232, 240);
+      doc.setFillColor(248, 250, 252);
+      doc.roundedRect(14, yStart - 4, pw - 28, tarifas.length * 5 + 10, 2, 2, "FD");
+      doc.setFontSize(8);
       doc.setFont(undefined, "bold");
-      doc.text("Tarifas del Per\u00edodo", 14, yStart);
+      doc.setTextColor(...green);
+      doc.text("Tarifas del Periodo", 18, yStart + 1);
       doc.setFont(undefined, "normal");
-      yStart += 5;
-      tarifas.forEach(s => {
+      yStart += 6;
+      tarifas.forEach((s, i) => {
         const liq = srvData[s.id];
         const rep = liq.reparto || s.reparto;
         const repLabel = rep === SEReparto.HABITACIONES ? "x hab." : rep === SEReparto.PERSONAS ? "x pers." : "1 pago";
-        doc.text(`${s.label} (${repLabel})`, 18, yStart);
-        doc.text(`Bs.- ${fmtMoney(liq.totalFactura)}`, pw - 14, yStart, { align: "right" });
-        yStart += 4.5;
+        doc.setTextColor(30, 41, 59);
+        doc.text(`${s.icon} ${s.label}`, 18, yStart + i * 5);
+        doc.text(`(${repLabel})`, 18 + doc.getTextWidth(`${s.icon} ${s.label}`) + 2, yStart + i * 5);
+        doc.setTextColor(71, 85, 105);
+        doc.text(`Bs.- ${fmtMoney(liq.totalFactura)}`, pw - 18, yStart + i * 5, { align: "right" });
       });
-      yStart += 3;
+      yStart += tarifas.length * 5 + 4;
     }
+
+    const colW = (pw - 28 - 20 - 14) / (servicios.length + 4);
+    const srvColW = Math.min(colW, 18);
+    const nombreColW = Math.max(30, pw - 28 - srvColW * servicios.length - 10 - 10 - 20 - 14);
 
     doc.autoTable({
       columns,
       body: rows,
       startY: yStart,
-      styles: { fontSize: 7, cellPadding: 1.5 },
-      headStyles: { fillColor: [6, 95, 70], fontSize: 7, halign: "center", textColor: 255 },
+      styles: { fontSize: 7, cellPadding: 1.5, lineColor: [226, 232, 240], lineWidth: 0.3 },
+      headStyles: { fillColor: [...green], fontSize: 7, halign: "center", textColor: 255, lineColor: [...green] },
+      bodyStyles: { textColor: [30, 41, 59] },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
       columnStyles: {
-        nombre: { cellWidth: 36 },
+        nombre: { cellWidth: nombreColW, halign: "left" },
         hab: { halign: "center", cellWidth: 10 },
         pers: { halign: "center", cellWidth: 10 },
         total: { halign: "center", cellWidth: 20 },
         estado: { halign: "center", cellWidth: 14 },
+      },
+      didParseCell(data) {
+        if (data.section === "body" && data.column.dataKey === "estado") {
+          const val = data.cell.raw?.toString() || "";
+          if (val === "Pagado") { data.cell.styles.textColor = [22, 163, 74]; data.cell.styles.fontStyle = "bold"; }
+          else { data.cell.styles.textColor = [180, 83, 9]; data.cell.styles.fontStyle = "bold"; }
+        }
+        if (data.section === "body" && data.row.index === rows.length - 1) {
+          data.cell.styles.fillColor = lightGray;
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.textColor = [30, 41, 59];
+        }
       },
     });
 
@@ -1687,6 +1724,7 @@ ${bodyHtml}
     for (let i = 1; i <= pages; i++) {
       doc.setPage(i);
       doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
       doc.text(footer, pw / 2, doc.internal.pageSize.height - 10, { align: "center" });
     }
 
