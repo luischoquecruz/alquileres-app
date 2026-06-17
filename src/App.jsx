@@ -1640,7 +1640,6 @@ ${bodyHtml}
     const green = [6, 95, 70];
     const lightGray = [241, 245, 249];
     const margin = 14;
-    const usable = pw - margin * 2;
 
     doc.setFontSize(9);
     doc.setTextColor(...green);
@@ -1670,7 +1669,7 @@ ${bodyHtml}
       yStart = 50;
       doc.setDrawColor(226, 232, 240);
       doc.setFillColor(248, 250, 252);
-      doc.roundedRect(margin, yStart - 4, usable, tarifas.length * 5 + 10, 2, 2, "FD");
+      doc.roundedRect(margin, yStart - 4, pw - margin * 2, tarifas.length * 5 + 10, 2, 2, "FD");
       doc.setFontSize(8);
       doc.setFont(undefined, "bold");
       doc.setTextColor(...green);
@@ -1690,36 +1689,20 @@ ${bodyHtml}
       yStart += tarifas.length * 5 + 4;
     }
 
-    doc.setFontSize(6);
-    const srvMin = servicios.map(s => {
-      const h = shortLabel(s);
-      const dataVals = [h, ...rows.map(r => r[`srv_${s.id}`]?.toString() || "").filter(Boolean)];
-      const maxW = Math.max(...dataVals.map(v => doc.getTextWidth(v)));
-      return Math.max(10, maxW + 3);
-    });
-    const nombreMin = Math.max(22, ...rows.map(r => doc.getTextWidth(r.nombre?.toString() || "")) + 3);
-    const habMin = doc.getTextWidth("Hab.") + 3;
-    const persMin = doc.getTextWidth("Pers.") + 3;
-    const totalMin = Math.max(doc.getTextWidth("Total") + 3, doc.getTextWidth(`Bs.- ${fmtMoney(totalesLiq)}`) + 3);
-    const estadoMin = doc.getTextWidth("Estado") + 3;
-
-    const fixedTotal = margin * 2 + nombreMin + habMin + persMin + srvMin.reduce((a, b) => a + b, 0) + totalMin + estadoMin;
-    const scale = fixedTotal > pw ? pw / fixedTotal : 1;
-
     doc.autoTable({
       columns,
       body: rows,
       startY: yStart,
-      styles: { fontSize: 7, cellPadding: 1.5, lineColor: [226, 232, 240], lineWidth: 0.3 },
-      headStyles: { fillColor: [...green], fontSize: 7, halign: "center", textColor: 255, lineColor: [...green] },
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      headStyles: { fillColor: [...green], fontSize: 7, halign: "center", textColor: 255 },
       bodyStyles: { textColor: [30, 41, 59] },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       columnStyles: {
-        nombre: { cellWidth: nombreMin * scale, halign: "left" },
-        hab: { halign: "center", cellWidth: habMin * scale },
-        pers: { halign: "center", cellWidth: persMin * scale },
-        total: { halign: "center", cellWidth: totalMin * scale },
-        estado: { halign: "center", cellWidth: estadoMin * scale },
+        nombre: { halign: "left" },
+        hab: { halign: "center", cellWidth: 8 },
+        pers: { halign: "center", cellWidth: 8 },
+        total: { halign: "center" },
+        estado: { halign: "center" },
       },
       didParseCell(data) {
         if (data.section === "body" && data.column.dataKey === "estado") {
