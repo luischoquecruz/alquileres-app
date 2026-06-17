@@ -1597,11 +1597,13 @@ ${bodyHtml}
     const pendientes = activas.length - pagados;
     const tarifas = servicios.filter(s => srvData[s.id] && Number(srvData[s.id].totalFactura) > 0);
 
+    const shortLabel = s => s.label.length > 6 ? s.label.slice(0, 5).trim() + "." : s.label;
+
     const columns = [
       { header: "Inquilino", dataKey: "nombre" },
       { header: "Hab.", dataKey: "hab" },
       { header: "Pers.", dataKey: "pers" },
-      ...servicios.map(s => ({ header: `${s.icon} ${s.label}`, dataKey: `srv_${s.id}` })),
+      ...servicios.map(s => ({ header: shortLabel(s), dataKey: `srv_${s.id}` })),
       { header: "Total", dataKey: "total" },
       { header: "Estado", dataKey: "estado" },
     ];
@@ -1637,6 +1639,8 @@ ${bodyHtml}
     const pw = doc.internal.pageSize.getWidth();
     const green = [6, 95, 70];
     const lightGray = [241, 245, 249];
+    const margin = 14;
+    const usable = pw - margin * 2;
 
     doc.setFontSize(9);
     doc.setTextColor(...green);
@@ -1652,43 +1656,55 @@ ${bodyHtml}
 
     doc.setFontSize(10);
     doc.setTextColor(30, 41, 59);
-    doc.text("Total:", 14, 36);
+    doc.text("Total:", margin, 36);
     doc.setFont(undefined, "bold");
-    doc.text(`Bs.- ${fmtMoney(totalesLiq)}`, 40, 36);
+    doc.text(`Bs.- ${fmtMoney(totalesLiq)}`, margin + 14, 36);
     doc.setFont(undefined, "normal");
     doc.setTextColor(6, 95, 70);
-    doc.text(`Pagado(s): ${pagados}`, 85, 36);
+    doc.text(`Pagado(s): ${pagados}`, margin + 65, 36);
     doc.setTextColor(180, 83, 9);
-    doc.text(`Pendiente(s): ${pendientes}`, 125, 36);
+    doc.text(`Pendiente(s): ${pendientes}`, margin + 105, 36);
 
     let yStart = 44;
     if (tarifas.length > 0) {
       yStart = 50;
       doc.setDrawColor(226, 232, 240);
       doc.setFillColor(248, 250, 252);
-      doc.roundedRect(14, yStart - 4, pw - 28, tarifas.length * 5 + 10, 2, 2, "FD");
+      doc.roundedRect(margin, yStart - 4, usable, tarifas.length * 5 + 10, 2, 2, "FD");
       doc.setFontSize(8);
       doc.setFont(undefined, "bold");
       doc.setTextColor(...green);
-      doc.text("Tarifas del Periodo", 18, yStart + 1);
+      doc.text("Tarifas del Periodo", margin + 4, yStart + 1);
       doc.setFont(undefined, "normal");
       yStart += 6;
-      tarifas.forEach((s, i) => {
-        const liq = srvData[s.id];
-        const rep = liq.reparto || s.reparto;
+      tarifas.forEach((srv, i) => {
+        const liq = srvData[srv.id];
+        const rep = liq.reparto || srv.reparto;
         const repLabel = rep === SEReparto.HABITACIONES ? "x hab." : rep === SEReparto.PERSONAS ? "x pers." : "1 pago";
+        const lineLabel = `${srv.label} (${repLabel})`;
         doc.setTextColor(30, 41, 59);
-        doc.text(`${s.icon} ${s.label}`, 18, yStart + i * 5);
-        doc.text(`(${repLabel})`, 18 + doc.getTextWidth(`${s.icon} ${s.label}`) + 2, yStart + i * 5);
+        doc.text(lineLabel, margin + 4, yStart + i * 5);
         doc.setTextColor(71, 85, 105);
-        doc.text(`Bs.- ${fmtMoney(liq.totalFactura)}`, pw - 18, yStart + i * 5, { align: "right" });
+        doc.text(`Bs.- ${fmtMoney(liq.totalFactura)}`, pw - margin - 4, yStart + i * 5, { align: "right" });
       });
       yStart += tarifas.length * 5 + 4;
     }
 
-    const colW = (pw - 28 - 20 - 14) / (servicios.length + 4);
-    const srvColW = Math.min(colW, 18);
-    const nombreColW = Math.max(30, pw - 28 - srvColW * servicios.length - 10 - 10 - 20 - 14);
+    doc.setFontSize(6);
+    const srvMin = servicios.map(s => {
+      const h = shortLabel(s);
+      const dataVals = [h, ...rows.map(r => r[`srv_${s.id}`]?.toString() || "").filter(Boolean)];
+      const maxW = Math.max(...dataVals.map(v => doc.getTextWidth(v)));
+      return Math.max(10, maxW + 3);
+    });
+    const nombreMin = Math.max(22, ...rows.map(r => doc.getTextWidth(r.nombre?.toString() || "")) + 3);
+    const habMin = doc.getTextWidth("Hab.") + 3;
+    const persMin = doc.getTextWidth("Pers.") + 3;
+    const totalMin = Math.max(doc.getTextWidth("Total") + 3, doc.getTextWidth(`Bs.- ${fmtMoney(totalesLiq)}`) + 3);
+    const estadoMin = doc.getTextWidth("Estado") + 3;
+
+    const fixedTotal = margin * 2 + nombreMin + habMin + persMin + srvMin.reduce((a, b) => a + b, 0) + totalMin + estadoMin;
+    const scale = fixedTotal > pw ? pw / fixedTotal : 1;
 
     doc.autoTable({
       columns,
@@ -1699,11 +1715,11 @@ ${bodyHtml}
       bodyStyles: { textColor: [30, 41, 59] },
       alternateRowStyles: { fillColor: [248, 250, 252] },
       columnStyles: {
-        nombre: { cellWidth: nombreColW, halign: "left" },
-        hab: { halign: "center", cellWidth: 10 },
-        pers: { halign: "center", cellWidth: 10 },
-        total: { halign: "center", cellWidth: 20 },
-        estado: { halign: "center", cellWidth: 14 },
+        nombre: { cellWidth: nombreMin * scale, halign: "left" },
+        hab: { halign: "center", cellWidth: habMin * scale },
+        pers: { halign: "center", cellWidth: persMin * scale },
+        total: { halign: "center", cellWidth: totalMin * scale },
+        estado: { halign: "center", cellWidth: estadoMin * scale },
       },
       didParseCell(data) {
         if (data.section === "body" && data.column.dataKey === "estado") {
