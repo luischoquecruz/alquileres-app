@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import html2pdf from "html2pdf.js";
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 
 const mobileBreak = 768;
 const useMobile = () => {
@@ -1513,7 +1514,7 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
       </div>`;
     }).join("\n");
     const css = `* { margin:0;padding:0;box-sizing:border-box; }
-  body { font:13px/1.5 system-ui,sans-serif; color:#1e293b; padding:24px; max-width:800px; margin:0 auto; color-scheme:light; }
+  .report-wrap { font:13px/1.5 system-ui,sans-serif; color:#1e293b; padding:24px; max-width:800px; margin:0 auto; }
   .header { text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #065f46; }
   .header h1 { font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#065f46;margin-bottom:2px; }
   .header h2 { font-size:16px;font-weight:800; }
@@ -1526,6 +1527,7 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
   .resumen { display:flex;gap:16px;justify-content:center;margin-top:10px;font-size:12px; }
   .resumen div { background:#f1f5f9;padding:6px 14px;border-radius:6px; }`;
     const bodyHtml = `
+<div class="report-wrap">
 <div class="header">
   <h1>${cfg.orgNombre} — ${cfg.orgSubtitulo}</h1>
   <h2>Informe de Liquidación</h2>
@@ -1560,7 +1562,8 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
     <td></td>
   </tr></tfoot>
 </table>
-<div class="footer">Documento generado el ${new Date().toLocaleDateString("es-ES")} — ${cfg.orgNombre} Alquileres</div>`;
+<div class="footer">Documento generado el ${new Date().toLocaleDateString("es-ES")} — ${cfg.orgNombre} Alquileres</div>
+</div>`;
     return { label, totalesLiq, bodyHtml, css };
   };
 
@@ -1584,24 +1587,109 @@ ${bodyHtml}
   };
 
   const descargarPDF = (k, v) => {
-    const { label, bodyHtml, css } = construirHtmlReporte(k, v);
-    const el = document.createElement("div");
-    el.innerHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${css}</style></head><body>${bodyHtml}</body></html>`;
-    el.style.position = "absolute";
-    el.style.left = "-9999px";
-    document.body.appendChild(el);
-    html2pdf()
-      .set({
-        filename: `Informe-${label.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`,
-        margin: [8, 8, 8, 8],
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
-      })
-      .from(el)
-      .save()
-      .then(() => document.body.removeChild(el))
-      .catch(() => document.body.removeChild(el));
+    const [y, m] = k.split("-");
+    const label = `${meses[Number(m) - 1]} ${y}`;
+    const totInq = totalesPorInquilino(v);
+    const totalesLiq = Object.values(totInq).reduce((s, i) => s + i.total, 0);
+    const srvData = v.servicios || v;
+    const pagados = activas.filter(p => pagoEstaPagado(k, String(p.id))).length;
+    const pendientes = activas.length - pagados;
+    const tarifas = servicios.filter(s => srvData[s.id] && Number(srvData[s.id].totalFactura) > 0);
+
+    const columns = [
+      { header: "Inquilino", dataKey: "nombre" },
+      { header: "Hab.", dataKey: "hab" },
+      { header: "Pers.", dataKey: "pers" },
+      ...servicios.map(s => ({ header: s.label, dataKey: `srv_${s.id}` })),
+      { header: "Total", dataKey: "total" },
+      { header: "Estado", dataKey: "estado" },
+    ];
+
+    const rows = activas.map(p => {
+      const pid = String(p.id);
+      const datos = totInq[pid];
+      if (!datos || datos.total <= 0) return null;
+      const fc = v.factores?.[pid];
+      const pagado = pagoEstaPagado(k, pid);
+      const serviciosConCargo = servicios.filter(s => datos.detalles[s.id] > 0);
+      const showHab = serviciosConCargo.some(s => (srvData[s.id]?.reparto || s.reparto) === SEReparto.HABITACIONES);
+      const showPers = serviciosConCargo.some(s => (srvData[s.id]?.reparto || s.reparto) === SEReparto.PERSONAS);
+      const row = {
+        nombre: datos.nombre,
+        hab: showHab && fc ? String(fc.habitaciones) : "",
+        pers: showPers && fc ? String(fc.personas) : "",
+        total: `Bs.- ${fmtMoney(datos.total)}`,
+        estado: pagado ? "Pagado" : "Pendiente",
+      };
+      servicios.forEach(s => { row[`srv_${s.id}`] = datos.detalles[s.id] > 0 ? `Bs.- ${fmtMoney(datos.detalles[s.id])}` : ""; });
+      return row;
+    }).filter(Boolean);
+
+    const totalRow = { nombre: "Totales", hab: "", pers: "", total: `Bs.- ${fmtMoney(totalesLiq)}`, estado: "" };
+    servicios.forEach(s => {
+      const sumSrv = Object.values(totInq).reduce((sum, i) => sum + (i.detalles[s.id] || 0), 0);
+      totalRow[`srv_${s.id}`] = sumSrv > 0 ? `Bs.- ${fmtMoney(sumSrv)}` : "";
+    });
+    rows.push(totalRow);
+
+    const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    const pw = doc.internal.pageSize.getWidth();
+    doc.setFontSize(8);
+    doc.text(cfg.orgNombre, pw / 2, 15, { align: "center" });
+    doc.setFontSize(16);
+    doc.setFont(undefined, "bold");
+    doc.text("Informe de Liquidaci\u00f3n", pw / 2, 22, { align: "center" });
+    doc.setFont(undefined, "normal");
+    doc.setFontSize(12);
+    doc.text(label, pw / 2, 28, { align: "center" });
+
+    doc.setFontSize(10);
+    doc.text(`Total: Bs.- ${fmtMoney(totalesLiq)}`, 14, 36);
+    doc.text(`Pagado(s): ${pagados}`, 14, 42);
+    doc.text(`Pendiente(s): ${pendientes}`, 14, 48);
+
+    let yStart = 54;
+    if (tarifas.length > 0) {
+      doc.setFontSize(9);
+      doc.setFont(undefined, "bold");
+      doc.text("Tarifas del Per\u00edodo", 14, yStart);
+      doc.setFont(undefined, "normal");
+      yStart += 5;
+      tarifas.forEach(s => {
+        const liq = srvData[s.id];
+        const rep = liq.reparto || s.reparto;
+        const repLabel = rep === SEReparto.HABITACIONES ? "x hab." : rep === SEReparto.PERSONAS ? "x pers." : "1 pago";
+        doc.text(`${s.label} (${repLabel})`, 18, yStart);
+        doc.text(`Bs.- ${fmtMoney(liq.totalFactura)}`, pw - 14, yStart, { align: "right" });
+        yStart += 4.5;
+      });
+      yStart += 3;
+    }
+
+    doc.autoTable({
+      columns,
+      body: rows,
+      startY: yStart,
+      styles: { fontSize: 7, cellPadding: 1.5 },
+      headStyles: { fillColor: [6, 95, 70], fontSize: 7, halign: "center", textColor: 255 },
+      columnStyles: {
+        nombre: { cellWidth: 36 },
+        hab: { halign: "center", cellWidth: 10 },
+        pers: { halign: "center", cellWidth: 10 },
+        total: { halign: "center", cellWidth: 20 },
+        estado: { halign: "center", cellWidth: 14 },
+      },
+    });
+
+    const footer = `Documento generado el ${new Date().toLocaleDateString("es-ES")} \u2014 ${cfg.orgNombre} Alquileres`;
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.text(footer, pw / 2, doc.internal.pageSize.height - 10, { align: "center" });
+    }
+
+    doc.save(`Informe-${label.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`);
   };
 
   return (
