@@ -1449,7 +1449,7 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
     });
   };
 
-  const imprimirInforme = (k, v) => {
+  const construirHtmlReporte = (k, v) => {
     const [y, m] = k.split("-");
     const label = `${meses[Number(m) - 1]} ${y}`;
     const totInq = totalesPorInquilino(v);
@@ -1512,9 +1512,7 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
         <span style="font-weight:600">Bs.- ${fmtMoney(srvData[s.id].totalFactura)}</span>
       </div>`;
     }).join("\n");
-    const el = document.createElement("div");
-    el.innerHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-  * { margin:0;padding:0;box-sizing:border-box; }
+    const css = `* { margin:0;padding:0;box-sizing:border-box; }
   body { font:13px/1.5 system-ui,sans-serif; color:#1e293b; padding:24px; max-width:800px; margin:0 auto; color-scheme:light; }
   .header { text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #065f46; }
   .header h1 { font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#065f46;margin-bottom:2px; }
@@ -1526,8 +1524,8 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
   .total-row td { font-weight:800;font-size:13px;background:#f1f5f9; }
   .footer { text-align:center;margin-top:16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px; }
   .resumen { display:flex;gap:16px;justify-content:center;margin-top:10px;font-size:12px; }
-  .resumen div { background:#f1f5f9;padding:6px 14px;border-radius:6px; }
-</style></head><body>
+  .resumen div { background:#f1f5f9;padding:6px 14px;border-radius:6px; }`;
+    const bodyHtml = `
 <div class="header">
   <h1>${cfg.orgNombre} — ${cfg.orgSubtitulo}</h1>
   <h2>Informe de Liquidación</h2>
@@ -1562,8 +1560,33 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
     <td></td>
   </tr></tfoot>
 </table>
-<div class="footer">Documento generado el ${new Date().toLocaleDateString("es-ES")} — ${cfg.orgNombre} Alquileres</div>
-</body></html>`;
+<div class="footer">Documento generado el ${new Date().toLocaleDateString("es-ES")} — ${cfg.orgNombre} Alquileres</div>`;
+    return { label, totalesLiq, bodyHtml, css };
+  };
+
+  const imprimirReporte = (k, v) => {
+    const { label, bodyHtml, css } = construirHtmlReporte(k, v);
+    const w = window.open("", "_blank", "width=700,height=600");
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Informe — ${label} — ${cfg.orgNombre}</title>
+<style>${css}
+  .toolbar { text-align:center;padding:10px 0;margin-bottom:12px;border-bottom:1px solid #e2e8f0; }
+  .toolbar button { background:#065f46;color:#fff;border:none;padding:7px 16px;border-radius:4px;cursor:pointer;font:13px/1.5 system-ui,sans-serif;margin:0 4px; }
+  .toolbar button:hover { background:#047857; }
+  @media print { .toolbar { display:none; } }
+</style></head><body>
+<div class="toolbar">
+  <button onclick="window.print()">🖨️ Imprimir</button>
+  <button onclick="window.close()">✖️ Cerrar</button>
+</div>
+${bodyHtml}
+</body></html>`);
+    w.document.close();
+  };
+
+  const descargarPDF = (k, v) => {
+    const { label, bodyHtml, css } = construirHtmlReporte(k, v);
+    const el = document.createElement("div");
+    el.innerHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>${css}</style></head><body>${bodyHtml}</body></html>`;
     el.style.position = "absolute";
     el.style.left = "-9999px";
     document.body.appendChild(el);
@@ -1780,8 +1803,11 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button onClick={e => { e.stopPropagation(); imprimirInforme(k, v); }} style={{ background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)", borderRadius: 5, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>
+                    <button onClick={e => { e.stopPropagation(); imprimirReporte(k, v); }} style={{ background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)", borderRadius: 5, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>
                       🖨️ Imprimir
+                    </button>
+                    <button onClick={e => { e.stopPropagation(); descargarPDF(k, v); }} style={{ background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)", borderRadius: 5, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>
+                      📄 PDF
                     </button>
                     {totalPendientes === 0 && totalPagados > 0 && <span style={{ fontSize: 10, color: "var(--tag-pagado-text)", background: "var(--bg-success)", padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>✅ Todo pagado</span>}
                     <span style={{ fontSize: 12, color: "var(--text-muted)", transition: "transform .2s", transform: expandido ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
