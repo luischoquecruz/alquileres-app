@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import html2pdf from "html2pdf.js";
 
 const mobileBreak = 768;
 const useMobile = () => {
@@ -1511,9 +1512,8 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
         <span style="font-weight:600">Bs.- ${fmtMoney(srvData[s.id].totalFactura)}</span>
       </div>`;
     }).join("\n");
-    const w = window.open("", "_blank", "width=700,height=600");
-    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Informe — ${label} — ${cfg.orgNombre}</title>
-<style>
+    const el = document.createElement("div");
+    el.innerHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
   * { margin:0;padding:0;box-sizing:border-box; }
   body { font:13px/1.5 system-ui,sans-serif; color:#1e293b; padding:24px; max-width:800px; margin:0 auto; color-scheme:light; }
   .header { text-align:center;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #065f46; }
@@ -1527,17 +1527,7 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
   .footer { text-align:center;margin-top:16px;font-size:10px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:10px; }
   .resumen { display:flex;gap:16px;justify-content:center;margin-top:10px;font-size:12px; }
   .resumen div { background:#f1f5f9;padding:6px 14px;border-radius:6px; }
-  .toolbar { text-align:center;padding:10px 0;margin-bottom:12px;border-bottom:1px solid #e2e8f0; }
-  .toolbar button { background:#065f46;color:#fff;border:none;padding:7px 16px;border-radius:4px;cursor:pointer;font:13px/1.5 system-ui,sans-serif;margin:0 4px; }
-  .toolbar button:hover { background:#047857; }
-  @media print { .toolbar { display:none; } }
-  .no-print { display:none; }
-  @media print { body { padding:16px; } }
 </style></head><body>
-<div class="toolbar">
-  <button onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
-  <button onclick="window.close()">✖️ Cerrar</button>
-</div>
 <div class="header">
   <h1>${cfg.orgNombre} — ${cfg.orgSubtitulo}</h1>
   <h2>Informe de Liquidación</h2>
@@ -1573,9 +1563,22 @@ function VistaLiquidaciones({ cfg, personas, liquidaciones, setLiquidaciones, se
   </tr></tfoot>
 </table>
 <div class="footer">Documento generado el ${new Date().toLocaleDateString("es-ES")} — ${cfg.orgNombre} Alquileres</div>
-<script>window.onload=setTimeout(()=>{window.print();window.close()},500)</script>
-</body></html>`);
-    w.document.close();
+</body></html>`;
+    el.style.position = "absolute";
+    el.style.left = "-9999px";
+    document.body.appendChild(el);
+    html2pdf()
+      .set({
+        filename: `Informe-${label.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`,
+        margin: [8, 8, 8, 8],
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" }
+      })
+      .from(el)
+      .save()
+      .then(() => document.body.removeChild(el))
+      .catch(() => document.body.removeChild(el));
   };
 
   return (
