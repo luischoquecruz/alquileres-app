@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { jsPDF } from "jspdf";
-import "jspdf-autotable";
+import { applyPlugin } from "jspdf-autotable";
+applyPlugin(jsPDF);
 
 const mobileBreak = 768;
 const useMobile = () => {
