@@ -364,10 +364,10 @@ function VistaInquilino({ cfg, usuario, personas, liquidaciones, servicios, tari
       const r = liqSrv.reparto || s.reparto;
       if (r === SEReparto.UNIDAD) { debe += tf; return; }
       const idsConServicio = Object.entries(inqData).filter(([_, v]) => v.servicios && v.servicios.includes(s.id)).map(([id]) => id);
-      const baseFiltradas = getPersonasSnapshot(li, personas);
+      const baseFiltradas = getPersonasSnapshot(liq, personas);
       const filtradas = idsConServicio.length ? baseFiltradas.filter(x => idsConServicio.includes(String(x.id))) : baseFiltradas;
       if (filtradas.length === 0) return;
-      const factores = li.factores || {};
+      const factores = liq.factores || {};
       const factor = r === SEReparto.HABITACIONES ? (Number(factores[pid]?.habitaciones) || Number(persona.habitaciones) || 1) : (Number(factores[pid]?.personas) || Number(persona.personas) || 1);
       const totalFactor = calcTotalFactor(filtradas, r, factores);
       debe += totalFactor > 0 ? Math.round(tf * factor / totalFactor * 10) / 10 : 0;
