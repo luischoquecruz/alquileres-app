@@ -6,11 +6,9 @@ import { local, KEYS } from "../lib/storage.js";
 
 const VACIO = { config: CONFIG_DEFAULT, personas: [], servicios: SERVICIOS_POR_DEFECTO, tarifas: {}, liquidaciones: {}, pagos: [], usuarios: [] };
 
-const urlInicial = () => {
-  const guardada = local.get(KEYS.gasUrl);
-  if (guardada !== null) return guardada;
-  return local.get("alquileres_config")?.appsScriptUrl ?? GAS_URL_DEFAULT; // versiones anteriores
-};
+// La URL guardada por versiones anteriores ("alquileres_config".appsScriptUrl) se ignora a propósito:
+// apuntaba a la implementación antigua de Apps Script, incompatible con este frontend.
+const urlInicial = () => local.get(KEYS.gasUrl) ?? GAS_URL_DEFAULT;
 
 const normalizar = data => {
   const personas = data.personas || [];

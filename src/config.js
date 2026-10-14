@@ -1,7 +1,7 @@
 import { SEReparto } from "./lib/calculos.js";
 
 export const GAS_URL_DEFAULT = import.meta.env.VITE_GAS_URL ??
-  "https://script.google.com/macros/s/AKfycbzdt_Zhngv9nYvmuZVi3X0L4hoEibO0MMhuh9SXFsWSejfwWqqxjGexoZkicOdjknOf2g/exec";
+  "https://script.google.com/macros/s/AKfycbwA3z85PNMjT-x8v3-SaTJ6soSkJxAFTqwIWZAEYi48Q8XmABlpdJf5XlVF9LH8EeFrFg/exec";
 
 export const SERVICIOS_POR_DEFECTO = [
   { id: "alquiler", label: "Alquiler", icon: "🏠", unit: "", tipo: "fijo", requerido: true, reparto: SEReparto.UNIDAD },
