@@ -60,6 +60,29 @@ const cssBase = cfg => {
   .tarifa { display:flex; justify-content:space-between; gap:8px; align-items:baseline; border:1px solid var(--bd); border-radius:8px; padding:8px 12px; }
   .tarifa .n { font-weight:700; } .tarifa .d { font-size:10px; color:var(--mu); display:block; font-weight:400; }
 
+  .box-h .ico { font-size:16px; margin-right:6px; }
+  .total-bar { display:flex; justify-content:space-between; align-items:center; gap:12px; background:#fef2f2; border:1px solid #fecaca; border-left:5px solid var(--bad);
+    border-radius:8px; padding:12px 16px; margin:4px 0 22px; page-break-inside:avoid; }
+  .total-bar .l { font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--bad); }
+  .total-bar .l span { display:block; font-size:10.5px; font-weight:400; letter-spacing:0; text-transform:none; color:var(--mu); margin-top:2px; }
+  .total-bar .v { font-size:22px; font-weight:900; color:var(--bad); font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+  /* Facturas: tarjeta informativa con color propio para no confundirla con la deuda */
+  .fact { --fx:#1d4ed8; --fxbg:#eff6ff; --fxbd:#bfdbfe; border:1px solid var(--fxbd); border-left:5px solid var(--fx); border-radius:10px; background:var(--fxbg); padding:14px 16px 16px; margin-top:22px; }
+  .fact-h { display:flex; gap:10px; align-items:flex-start; margin-bottom:12px; }
+  .fact-h .ico { font-size:20px; line-height:1; }
+  .fact-h .t { font-size:13px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--fx); }
+  .fact-h .s { font-size:10.5px; color:var(--mu); margin-top:2px; }
+  .fact-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; }
+  .fact-per { display:flex; flex-direction:column; background:#fff; border:1px solid var(--fxbd); border-radius:8px; overflow:hidden; page-break-inside:avoid; break-inside:avoid; }
+  .fact-per .ph { background:var(--fx); color:#fff; font-weight:800; font-size:11.5px; padding:6px 10px; letter-spacing:.02em; }
+  .fact-per ul { list-style:none; padding:4px 10px; flex:1; }
+  .fact-per li { display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:4px 0; border-bottom:1px dashed var(--bd); font-size:11.5px; }
+  .fact-per li:last-child { border-bottom:0; }
+  .fact-per li .cs { display:block; font-size:9.5px; color:var(--mu); }
+  .fact-per .pt { display:flex; justify-content:space-between; padding:6px 10px; background:var(--fxbg); border-top:1px solid var(--fxbd); font-weight:800; font-size:11.5px; color:var(--fx); }
+  .nota { font-size:10px; color:var(--mu); margin-top:14px; font-style:italic; }
+
   .foot { display:flex; justify-content:space-between; gap:12px; margin-top:24px; padding-top:10px; border-top:1px solid var(--bd); font-size:10px; color:var(--mu); }
 
   .toolbar { position:sticky; top:0; z-index:5; display:flex; justify-content:center; gap:8px; padding:10px; background:rgba(238,242,245,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--bd); }
@@ -112,21 +135,38 @@ const tablaEstadoCuenta = (periodos, servicios, conTotales = true) => {
   </table>`;
 };
 
-const tablaTarifas = (claves, tarifas, servicios) => {
-  const usados = servicios.filter(s => claves.some(k => tarifas[k]?.[s.id]));
-  if (!usados.length) return "";
-  return `<h3>Facturas por período</h3>
-  <table><thead><tr><th>Período</th>${usados.map(s => `<th class="n">${esc(s.icon)} ${esc(s.label)}</th>`).join("")}</tr></thead>
-  <tbody>${claves.map(k => `<tr><td>${esc(periodoDeKey(k).label)}</td>
-    ${usados.map(s => { const t = tarifas[k]?.[s.id]; return `<td class="n">${t ? bs(t) : "—"}</td>`; }).join("")}</tr>`).join("")}</tbody></table>`;
+// Tarjeta con el total de cada factura del inmueble por período (base del reparto, no es deuda).
+const tarjetaFacturas = (claves, tarifas, servicios) => {
+  const periodos = claves.map(k => ({
+    label: periodoDeKey(k).label,
+    lineas: servicios.filter(s => Number(tarifas[k]?.[s.id]) > 0)
+      .map(s => ({ s, monto: Number(tarifas[k][s.id]), consumo: Number(tarifas[k][s.id + "_consumo"]) || 0 })),
+  })).filter(p => p.lineas.length);
+  if (!periodos.length) return "";
+  return `<div class="fact">
+    <div class="fact-h"><span class="ico">🧾</span><div><div class="t">Facturas por período</div>
+      <div class="s">Monto total de cada factura del inmueble. Es la base del reparto entre inquilinos; su parte figura en el detalle de deuda.</div></div></div>
+    <div class="fact-grid">${periodos.map(p => `<div class="fact-per"><div class="ph">${esc(p.label)}</div>
+      <ul>${p.lineas.map(({ s, monto, consumo }) => `<li><span>${esc(s.icon)} ${esc(s.label)}${consumo ? `<span class="cs">${fmtNum(consumo)} ${esc(s.unit)}</span>` : ""}</span><b class="num">${bs(monto)}</b></li>`).join("")}</ul>
+      <div class="pt"><span>Total facturado</span><span class="num">${bs(p.lineas.reduce((t, l) => t + l.monto, 0))}</span></div></div>`).join("")}
+    </div></div>`;
 };
 
 export function imprimirDeuda({ cfg, persona, periodos, servicios, tarifas }) {
   const total = periodos.reduce((s, p) => s + Math.max(0, p.saldo), 0);
-  const contenido = `<div class="kpis">${kpi("Saldo pendiente", bs(total), "hl")}${kpi("Períodos con deuda", periodos.length)}${persona.inmueble ? kpi("Inmueble", esc(persona.inmueble)) : ""}</div>
-    <h3>Detalle por período</h3>${tablaEstadoCuenta(periodos, servicios)}
-    ${tablaTarifas(periodos.map(p => p.key), tarifas, servicios)}`;
-  return abrirImpresion("Deuda acumulada", documento(cfg, { titulo: "Estado de deuda", sub: esc(persona.nombre), contenido }), { cfg });
+  const debe = periodos.reduce((s, p) => s + p.debe, 0);
+  const pagado = periodos.reduce((s, p) => s + p.pagado, 0);
+  const rango = periodos.length > 1 ? `${periodos[0].label} a ${periodos[periodos.length - 1].label}` : periodos[0]?.label || "";
+  const contenido = `<div class="kpis">${kpi("Saldo pendiente", bs(total), "hl")}${kpi("Períodos adeudados", periodos.length, "bad")}${kpi("Total liquidado", bs(debe))}${kpi("Pagado a cuenta", bs(pagado), pagado > 0 ? "ok" : "")}</div>
+    <div class="box">
+      <div class="box-h"><div><div class="t"><span class="ico">📋</span>Detalle de deuda por período</div>${rango ? `<div class="s">${esc(rango)}</div>` : ""}</div></div>
+      ${tablaEstadoCuenta(periodos, servicios)}
+    </div>
+    <div class="total-bar"><div class="l">Total a pagar<span>Suma de los saldos pendientes de ${periodos.length} período(s)</span></div><div class="v">${bs(total)}</div></div>
+    ${tarjetaFacturas(periodos.map(p => p.key), tarifas, servicios)}
+    <p class="nota">Estado de cuenta informativo emitido el ${hoy()}. Los pagos registrados después de esta fecha no están reflejados.</p>`;
+  const sub = `${esc(persona.nombre)}${persona.inmueble ? ` · ${esc(persona.inmueble)}` : ""}`;
+  return abrirImpresion(`Deuda acumulada — ${persona.nombre}`, documento(cfg, { titulo: "Estado de deuda", sub, contenido }), { cfg });
 }
 
 export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquidaciones }) {
@@ -140,7 +180,7 @@ export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquid
     </div>`).join("");
   const contenido = `<div class="kpis">${kpi("Inquilinos", filas.length)}${kpi("Con deuda", filas.filter(f => f.saldoTotal > 0).length, "bad")}${kpi("Cobrado", bs(cobrado), "ok")}${kpi("Deuda total", bs(deuda), "hl")}</div>
     <h3>Estado de cuenta por inquilino</h3>${personasHtml}
-    ${tablaTarifas(Object.keys(liquidaciones).sort(), tarifas, servicios)}`;
+    ${tarjetaFacturas(Object.keys(liquidaciones).sort(), tarifas, servicios)}`;
   return abrirImpresion("Resumen por Persona", documento(cfg, { titulo: "Resumen por persona", sub: `${filas.length} inquilino(s) · ${Object.keys(liquidaciones).length} período(s) liquidados`, contenido }), { cfg });
 }
 
