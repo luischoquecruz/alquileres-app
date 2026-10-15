@@ -27,3 +27,6 @@ dist-ssr
 
 # Configuración personal de Claude Code
 .claude/settings.local.json
+
+# Copias de respaldo de Notepad++
+nppBackup/
