@@ -1,13 +1,11 @@
 import { useMemo, useState } from "react";
 import { estadoCuenta, pagoEsDePersona } from "../lib/calculos.js";
 import { fmtMoney, fmtDate, round1 } from "../lib/format.js";
-import { useMobile } from "../hooks/useMobile.js";
 import { Vacio } from "../ui.jsx";
 import CambiarPassword from "../components/CambiarPassword.jsx";
 
 export default function VistaInquilino({ cfg, sesion, datos, onLogout, onCambiarPassword }) {
   const { personas, servicios, liquidaciones, pagos } = datos;
-  const isMobile = useMobile();
   const [cambiarPass, setCambiarPass] = useState(false);
   const activas = useMemo(() => personas.filter(p => p.activo !== false), [personas]);
   const persona = useMemo(() => personas.find(p => String(p.id) === String(sesion.personaId)) || null, [sesion, personas]);
@@ -21,62 +19,60 @@ export default function VistaInquilino({ cfg, sesion, datos, onLogout, onCambiar
     : []), [pagos, persona]);
 
   return (
-    <div style={{ minHeight: "100vh", background: `linear-gradient(135deg,${cfg.colorFondo} 0%,${cfg.colorFondoAlt} 100%)`, padding: isMobile ? "16px 10px" : "24px 16px" }}>
+    <div className="public">
       {cambiarPass && <CambiarPassword cfg={cfg} onGuardar={onCambiarPassword} onClose={() => setCambiarPass(false)} />}
-      <div style={{ maxWidth: 600, margin: "0 auto" }}>
-        <div style={{ background: `linear-gradient(135deg,${cfg.colorPrimario},${cfg.colorAcento})`, borderRadius: 16, padding: isMobile ? 16 : "20px 24px", marginBottom: 20, color: "#fff" }}>
-          <div style={{ fontSize: 10, opacity: .7, letterSpacing: 2 }}>{cfg.orgNombre} — {cfg.orgSubtitulo}</div>
-          <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>👋 Hola, {persona ? persona.nombre : sesion.nombre}</div>
-          <div style={{ fontSize: 12, opacity: .8, marginTop: 2 }}>Panel del inquilino</div>
-          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-            <button onClick={() => setCambiarPass(true)} style={{ background: "rgba(255,255,255,.2)", border: "none", color: "#fff", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🔑 Contraseña</button>
-            <button onClick={onLogout} style={{ background: "rgba(255,255,255,.2)", border: "none", color: "#fff", borderRadius: 6, padding: "5px 12px", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>🚪 Cerrar sesión</button>
+      <div className="public-inner">
+        <header className="hero" style={{ textAlign: "left" }}>
+          <div className="hero-eyebrow">{cfg.orgNombre} — {cfg.orgSubtitulo}</div>
+          <h1 className="hero-title">👋 Hola, {persona ? persona.nombre : sesion.nombre}</h1>
+          <p className="hero-sub">{persona?.inmueble || "Panel del inquilino"}</p>
+          <div className="hero-actions" style={{ justifyContent: "flex-start" }}>
+            <button className="btn btn-sm btn-on-dark" onClick={() => setCambiarPass(true)}>🔑 Contraseña</button>
+            <button className="btn btn-sm btn-on-dark" onClick={onLogout}>🚪 Cerrar sesión</button>
           </div>
-        </div>
+        </header>
 
-        {!persona && <Vacio>Su usuario no está vinculado a ningún inquilino. Consulte al administrador.</Vacio>}
+        {!persona && <Vacio icon="🔗">Su usuario no está vinculado a ningún inquilino. Consulte al administrador.</Vacio>}
 
-        {deudaTotal > 0 && (
-          <div style={{ background: "var(--bg-error)", border: "1px solid var(--danger-text)", borderRadius: 12, padding: "14px 18px", marginBottom: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ color: "var(--danger-text)", fontWeight: 600, fontSize: 13 }}>⚠️ Saldo pendiente</div>
-              <div style={{ color: "var(--danger-text)", fontWeight: 900, fontSize: 20 }}>Bs.- {fmtMoney(deudaTotal)}</div>
+        {persona && (
+          <div className="stats" style={{ gridTemplateColumns: "1fr 1fr" }}>
+            <div className="card stat" style={deudaTotal > 0 ? { background: "var(--bg-error)", borderColor: "var(--danger-text)" } : undefined}>
+              <div className="stat-label">Saldo pendiente</div>
+              <div className={`stat-value ${deudaTotal > 0 ? "text-danger" : "text-ok"}`}>{deudaTotal > 0 ? `Bs.- ${fmtMoney(deudaTotal)}` : "Al día ✅"}</div>
             </div>
-            <div style={{ marginTop: 6, fontSize: 11, color: "var(--danger-text)" }}>
-              {pendientes.map(p => <span key={p.key} style={{ marginRight: 10 }}>{p.label}: Bs.- {fmtMoney(p.saldo)}</span>)}
+            <div className="card stat">
+              <div className="stat-label">Total pagado</div>
+              <div className="stat-value">Bs.- {fmtMoney(cuenta?.totalPagado || 0)}</div>
             </div>
           </div>
         )}
 
+        {pendientes.length > 0 && (
+          <div className="card">
+            <div className="card-header card-title">⚠️ Períodos pendientes</div>
+            {pendientes.map(p => (
+              <div key={p.key} className="list-item" style={{ borderBottom: "1px solid var(--border-light)" }}>
+                <div className="grow strong">{p.label}</div>
+                <div className="strong num text-danger">Bs.- {fmtMoney(p.saldo)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {persona && (historial.length === 0 ? (
-          <Vacio>No hay pagos registrados a su nombre.</Vacio>
+          <Vacio icon="🧾">No hay pagos registrados a su nombre.</Vacio>
         ) : (
-          <div style={{ background: "var(--bg-card)", borderRadius: 12, border: "1px solid var(--border-light)", overflow: "hidden" }}>
-            <div style={{ padding: "12px 14px", fontWeight: 700, fontSize: 14, color: "var(--text-main)", borderBottom: "1px solid var(--border-light)" }}>
-              📋 Historial de pagos ({historial.length})
-            </div>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, color: "var(--text-main)" }}>
-                <thead>
-                  <tr style={{ background: cfg.colorPrimario, color: "#fff" }}>
-                    <th style={{ padding: "7px 8px", textAlign: "left", fontSize: 10 }}>Fecha</th>
-                    <th style={{ padding: "7px 8px", fontSize: 10 }}>Período</th>
-                    <th style={{ padding: "7px 8px", fontSize: 10 }}>Total</th>
-                    <th style={{ padding: "7px 8px", fontSize: 10 }}>Método</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {historial.map(s => (
-                    <tr key={s.id} style={{ borderBottom: "1px solid var(--border-light)" }}>
-                      <td style={{ padding: "6px 8px", fontWeight: 600 }}>{fmtDate(s.fecha)}</td>
-                      <td style={{ padding: "6px 8px", textAlign: "center" }}>{s.periodoMes} {s.periodoAnio}</td>
-                      <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 700, color: cfg.colorAcento }}>Bs.- {fmtMoney(Number(s.total) || 0)}</td>
-                      <td style={{ padding: "6px 8px", textAlign: "center" }}>{s.metodo}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="card">
+            <div className="card-header card-title">📋 Historial de pagos ({historial.length})</div>
+            {historial.map(s => (
+              <div key={s.id} className="list-item" style={{ borderBottom: "1px solid var(--border-light)" }}>
+                <div className="grow">
+                  <div className="strong">{s.periodoMes} {s.periodoAnio}</div>
+                  <div className="item-meta">{fmtDate(s.fecha)} · {cfg.metodosIconos?.[s.metodo] || "💳"} {s.metodo}</div>
+                </div>
+                <div className="strong num text-accent">Bs.- {fmtMoney(Number(s.total) || 0)}</div>
+              </div>
+            ))}
           </div>
         ))}
       </div>

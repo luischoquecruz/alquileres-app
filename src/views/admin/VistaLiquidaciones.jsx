@@ -1,8 +1,7 @@
 import { useState, useMemo } from "react";
 import { SEReparto, serviciosDeLiq, totalesPorPersona, totalFactorServicio, montoPagado } from "../../lib/calculos.js";
-import { meses, mesActual, anioActual, periodoKey, periodoDeKey, fmtMoney, fmtNum, round1 } from "../../lib/format.js";
-import { inp, btnPrimario } from "../../estilos.js";
-import { Label, Vacio } from "../../ui.jsx";
+import { mesActual, anioActual, periodoKey, periodoDeKey, fmtMoney, fmtNum, round1 } from "../../lib/format.js";
+import { Field, Mensaje, PageHeader, PeriodoSelector, Vacio } from "../../ui.jsx";
 import { labelReparto } from "../../hooks/useMontos.js";
 import { imprimirLiquidacion } from "../../print/reportes.js";
 
@@ -12,7 +11,6 @@ const REPARTOS = [
   { value: SEReparto.PERSONAS, label: "Por cantidad de personas" },
 ];
 const unidadFactor = r => (r === SEReparto.HABITACIONES ? "hab" : "pers");
-const btnMini = { background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border-light)", borderRadius: 5, padding: "3px 8px", fontSize: 10, cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" };
 
 // Construye la liquidación a guardar a partir del borrador y las tarifas del período.
 const construirLiquidacion = (edit, servicios, tarifasPeriodo, activas) => {
@@ -55,6 +53,14 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
 
   const borrador = useMemo(() => construirLiquidacion(edit, servicios, tarifasPeriodo, activas), [edit, servicios, tarifasPeriodo, activas]);
   const inquilinosEdit = edit?.inquilinos || {};
+  const sinTarifas = !servicios.some(s => Number(tarifasPeriodo[s.id]) > 0);
+
+  const cambiarPeriodo = (m, a) => { setMes(m); setAnio(Number(a)); };
+  const editarPeriodo = k => {
+    const p = periodoDeKey(k);
+    cambiarPeriodo(p.mes, p.anio);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const setReparto = (servicioId, reparto) => setEdit(prev => {
     const base = prev || { servicios: {}, inquilinos: {} };
@@ -71,8 +77,9 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
   const toggleServicioInquilino = (pid, sid) =>
     setAsignados(pid, lista => (lista.includes(sid) ? lista.filter(x => x !== sid) : [...lista, sid]));
 
+  const todosTienen = sid => activas.length > 0 && activas.every(p => (inquilinosEdit[String(p.id)]?.servicios || []).includes(sid));
   const toggleAllServicio = sid => {
-    const todos = activas.every(p => (inquilinosEdit[String(p.id)]?.servicios || []).includes(sid));
+    const todos = todosTienen(sid);
     activas.forEach(p => setAsignados(String(p.id), lista =>
       todos ? lista.filter(x => x !== sid) : (lista.includes(sid) ? lista : [...lista, sid])));
   };
@@ -80,7 +87,7 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
   const guardar = async () => {
     const conTarifa = servicios.filter(s => Number(tarifasPeriodo[s.id]) > 0);
     if (conTarifa.length === 0) {
-      setMsg(`⚠️ Primero cargue las tarifas de ${mes} ${anio} en la pestaña Tarifas`);
+      setMsg(`⚠️ Primero cargue las tarifas de ${mes} ${anio} en la sección Tarifas`);
       setTimeout(() => setMsg(""), 5000);
       return;
     }
@@ -104,167 +111,161 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
   };
 
   return (
-    <div>
-      <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text-main)", marginBottom: 14 }}>
-        Gestión de Liquidaciones Mensuales
-        <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 400, display: "block" }}>
-          Usa las tarifas registradas para {mes} {anio}. Asigne los servicios a cada inquilino y guarde.
-        </span>
-      </div>
+    <div className="stack" style={{ gap: 20 }}>
+      <PageHeader title="Liquidaciones" sub="Reparte las facturas del mes entre los inquilinos según las tarifas registradas." />
 
-      <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: 16, marginBottom: 16, boxShadow: "var(--shadow-sm)" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 10, alignItems: "end", marginBottom: 16 }}>
-          <div><Label>Mes</Label><select value={mes} onChange={e => setMes(e.target.value)} style={inp}>{meses.map(m => <option key={m}>{m}</option>)}</select></div>
-          <div><Label>Año</Label><input type="number" value={anio} onChange={e => setAnio(Number(e.target.value))} style={inp} /></div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", background: liqActual ? "var(--bg-success)" : "var(--bg-warning)", borderRadius: 7, padding: "8px 12px", whiteSpace: "nowrap", fontWeight: 600 }}>
-            {liqActual ? "✅ Configurado" : "⚠️ Sin configurar"}
+      <div className="card">
+        <div className="card-body stack">
+          <div className="field">
+            <div className="row-between">
+              <span className="label">Período</span>
+              <span className={`badge ${liqActual ? "badge-ok" : "badge-warn"}`}>{liqActual ? "✅ Configurado" : "⚠️ Sin configurar"}</span>
+            </div>
+            <PeriodoSelector mes={mes} anio={anio} onChange={cambiarPeriodo} periodos={Object.keys(liquidaciones)} etiquetaPeriodos="Liquidados:" />
           </div>
-        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-secondary)" }}>Tarifas del período</div>
-          {servicios.map(s => {
-            const liq = borrador.servicios[s.id];
-            const tf = totalFactorServicio(s, borrador, activas);
-            const precio = tf ? round1(liq.totalFactura / tf) : 0;
-            const u = unidadFactor(liq.reparto);
-            return (
-              <div key={s.id} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, alignItems: "center", background: "var(--bg-muted)", borderRadius: 8, padding: "10px 14px" }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-main)" }}>{s.icon} {s.label}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                    {liq.totalFactura > 0 ? `Bs.- ${fmtMoney(liq.totalFactura)}` : "Sin tarifa"}
-                    {liq.consumoTotal ? ` · ${fmtNum(liq.consumoTotal)} ${s.unit}` : ""}
-                    {" · "}<span style={{ color: "var(--text-secondary)" }}>{labelReparto(liq.reparto)}</span>
+          {sinTarifas && <Mensaje tipo="warn">No hay tarifas cargadas para {mes} {anio}. Regístrelas primero en la sección Tarifas.</Mensaje>}
+
+          <div className="stack-sm">
+            <div className="label">Servicios del período</div>
+            {servicios.map(s => {
+              const liq = borrador.servicios[s.id];
+              const tf = totalFactorServicio(s, borrador, activas);
+              const precio = tf ? round1(liq.totalFactura / tf) : 0;
+              const u = unidadFactor(liq.reparto);
+              return (
+                <div key={s.id} className="card" style={{ boxShadow: "none", background: "var(--bg-muted)", padding: 14 }}>
+                  <div className="row-between" style={{ alignItems: "flex-start" }}>
+                    <div>
+                      <div className="strong">{s.icon} {s.label}</div>
+                      <div className="xsmall muted">
+                        {liq.totalFactura > 0 ? `Factura Bs.- ${fmtMoney(liq.totalFactura)}` : "Sin tarifa"}
+                        {liq.consumoTotal ? ` · ${fmtNum(liq.consumoTotal)} ${s.unit}` : ""}
+                      </div>
+                    </div>
+                    {liq.totalFactura > 0 && tf > 0 && (
+                      <div style={{ textAlign: "right" }}>
+                        <div className="strong num text-accent">Bs.- {fmtMoney(precio)}/{u}</div>
+                        <div className="xsmall muted num">× {fmtNum(tf)} {u}</div>
+                      </div>
+                    )}
+                  </div>
+                  <select className="select" style={{ marginTop: 10 }} value={liq.reparto} onChange={e => setReparto(s.id, e.target.value)} aria-label={`Reparto ${s.label}`}>
+                    {REPARTOS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+
+          {activas.length > 0 && (
+            <div className="stack-sm">
+              <div>
+                <div className="label">👥 Asignación de servicios por inquilino</div>
+                <div className="hint">Un inquilino <b>sin ninguna marca</b> participa de todos los servicios.</div>
+              </div>
+              <div className="card" style={{ boxShadow: "none" }}>
+                <div className="assign-row" style={{ background: "var(--bg-muted)", borderRadius: "var(--radius) var(--radius) 0 0" }}>
+                  <span className="grow xsmall strong secondary">Marcar a todos</span>
+                  <div className="row" style={{ justifyContent: "flex-end" }}>
+                    {servicios.map(s => (
+                      <button key={s.id} type="button" className="toggle-pill" onClick={() => toggleAllServicio(s.id)} aria-pressed={todosTienen(s.id)}>
+                        {todosTienen(s.id) ? "☑" : "☐"} {s.icon} <span className="only-desktop">{s.label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
-                <select value={liq.reparto} onChange={e => setReparto(s.id, e.target.value)} aria-label={`Reparto ${s.label}`} style={inp}>
-                  {REPARTOS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                {liq.totalFactura > 0 && (
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: cfg.colorAcento }}>Bs.- {fmtMoney(liq.totalFactura)}</div>
-                    {tf > 0 && <div style={{ fontSize: 10, color: "var(--text-secondary)" }}>Bs.- {fmtMoney(precio)}/{u} × {fmtNum(tf)} {u}</div>}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {activas.length > 0 && (
-          <div style={{ marginTop: 18, borderTop: "1px solid var(--border-light)", paddingTop: 14 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-main)", marginBottom: 4 }}>👥 Asignación de servicios por inquilino</div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10 }}>
-              Marque qué servicios corresponden a cada uno. Un inquilino <b>sin ninguna marca</b> participa de todos los servicios.
-            </div>
-            <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid var(--border-light)" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, color: "var(--text-main)" }}>
-                <thead>
-                  <tr style={{ background: cfg.colorPrimario, color: "#fff" }}>
-                    <th style={{ padding: "7px 8px", textAlign: "left", fontSize: 10, textTransform: "uppercase" }}>Inquilino</th>
-                    {servicios.map(s => {
-                      const todos = activas.every(p => (inquilinosEdit[String(p.id)]?.servicios || []).includes(s.id));
-                      return (
-                        <th key={s.id} style={{ padding: "7px 8px", fontSize: 10 }}>
-                          <button onClick={() => toggleAllServicio(s.id)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 10, fontWeight: 600 }}>
-                            {s.icon}<br />{s.label}<br /><span style={{ opacity: .8 }}>{todos ? "☑ Todos" : "☐ Todos"}</span>
-                          </button>
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {activas.map(p => {
-                    const asignados = inquilinosEdit[String(p.id)]?.servicios || [];
-                    return (
-                      <tr key={p.id} style={{ borderBottom: "1px solid var(--border-light)", background: "var(--bg-card)" }}>
-                        <td style={{ padding: "5px 8px", fontWeight: 700 }}>
-                          <div>{p.nombre}{asignados.length === 0 && <span style={{ fontSize: 9, fontWeight: 400, color: "var(--text-muted)", marginLeft: 4 }}>(todos)</span>}</div>
-                          <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400 }}>🏠 {p.habitaciones || 1} hab · 👥 {p.personas || 1} pers</div>
-                        </td>
+                {activas.map(p => {
+                  const asignados = inquilinosEdit[String(p.id)]?.servicios || [];
+                  return (
+                    <div key={p.id} className="assign-row" style={{ flexWrap: "wrap" }}>
+                      <div className="grow" style={{ minWidth: 140 }}>
+                        <div className="strong">{p.nombre}{asignados.length === 0 && <span className="xsmall muted" style={{ fontWeight: 400, marginLeft: 6 }}>(todos)</span>}</div>
+                        <div className="xsmall muted">🏠 {p.habitaciones || 1} hab · 👥 {p.personas || 1} pers</div>
+                      </div>
+                      <div className="row" style={{ justifyContent: "flex-end" }}>
                         {servicios.map(s => (
-                          <td key={s.id} style={{ padding: "5px 8px", textAlign: "center" }}>
-                            <input type="checkbox" aria-label={`${s.label} para ${p.nombre}`} checked={asignados.includes(s.id)} onChange={() => toggleServicioInquilino(String(p.id), s.id)}
-                              style={{ width: 16, height: 16, cursor: "pointer", accentColor: cfg.colorPrimario }} />
-                          </td>
+                          <label key={s.id} className="toggle-pill">
+                            <input type="checkbox" aria-label={`${s.label} para ${p.nombre}`} checked={asignados.includes(s.id)} onChange={() => toggleServicioInquilino(String(p.id), s.id)} />
+                            <span aria-hidden="true">{s.icon}</span><span className="only-desktop" aria-hidden="true">{s.label}</span>
+                          </label>
                         ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
-
-        <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <button onClick={guardar} style={{ ...btnPrimario(cfg), padding: "10px 20px", fontSize: 13 }}>💾 Guardar liquidación para {mes} {anio}</button>
-          {msg && <span style={{ fontSize: 12, color: msg.startsWith("⚠️") ? "var(--star)" : "var(--tag-pagado-text)", fontWeight: 600 }}>{msg}</span>}
+          )}
+        </div>
+        <div className="card-footer stack-sm">
+          {msg && <Mensaje tipo={msg.startsWith("⚠️") ? "warn" : "ok"}>{msg}</Mensaje>}
+          <button className="btn btn-primary btn-lg btn-block" onClick={guardar}>💾 Guardar liquidación para {mes} {anio}</button>
         </div>
       </div>
 
-      <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-main)", marginBottom: 8 }}>Historial de liquidaciones</div>
-      {Object.keys(liquidaciones).length === 0 ? <Vacio>No hay liquidaciones configuradas aún</Vacio> : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {Object.entries(liquidaciones).sort((a, b) => b[0].localeCompare(a[0])).map(([k, v]) => (
-            <TarjetaLiquidacion key={k} clave={k} liq={v} cfg={cfg} servicios={servicios} activas={activas} pagos={pagos}
-              expandido={expandKey === k} onToggle={() => setExpandKey(expandKey === k ? null : k)}
-              onImprimir={() => imprimir(k, v)} onPdf={() => pdf(k, v)} />
-          ))}
-        </div>
-      )}
+      <div>
+        <h2 className="section-title">Historial de liquidaciones</h2>
+        {Object.keys(liquidaciones).length === 0 ? <Vacio icon="📄">No hay liquidaciones configuradas aún</Vacio> : (
+          <div className="list">
+            {Object.entries(liquidaciones).sort((a, b) => b[0].localeCompare(a[0])).map(([k, v]) => (
+              <TarjetaLiquidacion key={k} clave={k} liq={v} servicios={servicios} activas={activas} pagos={pagos} actual={k === key}
+                expandido={expandKey === k} onToggle={() => setExpandKey(expandKey === k ? null : k)}
+                onEditar={() => editarPeriodo(k)} onImprimir={() => imprimir(k, v)} onPdf={() => pdf(k, v)} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function TarjetaLiquidacion({ clave, liq, cfg, servicios, activas, pagos, expandido, onToggle, onImprimir, onPdf }) {
+function TarjetaLiquidacion({ clave, liq, servicios, activas, pagos, actual, expandido, onToggle, onEditar, onImprimir, onPdf }) {
   const { label, mes, anio } = periodoDeKey(clave);
   const totInq = useMemo(() => totalesPorPersona(liq, servicios, activas), [liq, servicios, activas]);
   const pagado = p => montoPagado(pagos, p, mes, anio) > 0;
-  const totalPagados = activas.filter(pagado).length;
-  const totalPendientes = activas.length - totalPagados;
+  const conMonto = activas.filter(p => totInq[String(p.id)]?.total > 0);
+  const totalPagados = conMonto.filter(pagado).length;
+  const totalPendientes = conMonto.length - totalPagados;
   const total = Object.values(totInq).reduce((s, i) => s + i.total, 0);
   const totalServicio = s => Object.values(totInq).reduce((sum, i) => sum + (i.detalles[s.id] || 0), 0);
 
   return (
-    <div style={{ background: "var(--bg-card)", borderRadius: 10, border: "1px solid var(--border-light)", overflow: "hidden" }}>
-      <div onClick={onToggle} role="button" tabIndex={0} aria-expanded={expandido} onKeyDown={e => { if (e.key === "Enter") onToggle(); }}
-        style={{ padding: "12px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, userSelect: "none", flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: "var(--text-main)" }}>{label}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            {servicios.map(s => { const st = totalServicio(s); return st > 0 ? <span key={s.id} style={{ marginRight: 8 }}>{s.icon} Bs.- {fmtMoney(st)}</span> : null; })}
+    <div className="card" style={actual ? { borderColor: "var(--accent)" } : undefined}>
+      <button type="button" className="collapse-trigger" onClick={onToggle} aria-expanded={expandido}>
+        <div className="grow">
+          <div className="row">
+            <span className="item-title">{label}</span>
+            {totalPendientes === 0 && totalPagados > 0
+              ? <span className="badge badge-ok">✅ Todo pagado</span>
+              : <span className="badge badge-warn">{totalPendientes} pendiente(s)</span>}
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3 }}>
-            Bs.- {fmtMoney(total)} total | {totalPagados} pagado(s) · {totalPendientes} pendiente(s)
-          </div>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>
-            {servicios.map(s => {
-              const ft = totalFactorServicio(s, liq, activas);
-              return ft ? <span key={s.id} style={{ marginRight: 8 }}>{s.icon} {fmtNum(ft)} {unidadFactor(serviciosDeLiq(liq)[s.id]?.reparto || s.reparto)}</span> : null;
-            })}
+          <div className="xsmall muted" style={{ marginTop: 4 }}>
+            {servicios.map(s => { const st = totalServicio(s); return st > 0 ? <span key={s.id} className="nowrap" style={{ marginRight: 10, display: "inline-block" }}>{s.icon} Bs.- {fmtMoney(st)}</span> : null; })}
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <button onClick={e => { e.stopPropagation(); onImprimir(); }} style={btnMini}>🖨️ Imprimir</button>
-          <button onClick={e => { e.stopPropagation(); onPdf(); }} style={btnMini}>📄 PDF</button>
-          {totalPendientes === 0 && totalPagados > 0 && <span style={{ fontSize: 10, color: "var(--tag-pagado-text)", background: "var(--bg-success)", padding: "2px 8px", borderRadius: 6, fontWeight: 600 }}>✅ Todo pagado</span>}
-          <span style={{ fontSize: 12, color: "var(--text-muted)", transition: "transform .2s", transform: expandido ? "rotate(180deg)" : "none" }}>▼</span>
+        <div style={{ textAlign: "right" }}>
+          <div className="strong num">Bs.- {fmtMoney(total)}</div>
+          <div className="xsmall muted">{totalPagados}/{conMonto.length} pagados</div>
         </div>
+        <span className="chevron" aria-hidden="true">▼</span>
+      </button>
+      <div className="row" style={{ padding: "0 18px 14px", gap: 6 }}>
+        <button className="btn btn-secondary btn-sm" onClick={onEditar}>✏️ Editar</button>
+        <button className="btn btn-secondary btn-sm" onClick={onImprimir}>🖨️ Imprimir</button>
+        <button className="btn btn-secondary btn-sm" onClick={onPdf}>📄 PDF</button>
       </div>
 
       {expandido && (
-        <div style={{ borderTop: "1px solid var(--border-light)", padding: 12 }}>
-          <div style={{ overflowX: "auto", borderRadius: 8, border: "1px solid var(--border-light)" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, color: "var(--text-main)" }}>
+        <div style={{ padding: "0 14px 14px" }}>
+          <div className="table-wrap table-stack">
+            <table className="table">
               <thead>
-                <tr style={{ background: cfg.colorPrimario, color: "#fff" }}>
-                  <th style={{ padding: "7px 8px", textAlign: "left", fontSize: 10 }}>Inquilino</th>
-                  {servicios.map(s => <th key={s.id} style={{ padding: "7px 8px", fontSize: 10 }}>{s.icon} {s.label}</th>)}
-                  <th style={{ padding: "7px 8px", fontSize: 10 }}>Total</th>
-                  <th style={{ padding: "7px 8px", fontSize: 10 }}>Estado</th>
+                <tr>
+                  <th>Inquilino</th>
+                  {servicios.map(s => <th key={s.id} className="r">{s.icon} {s.label}</th>)}
+                  <th className="r">Total</th>
+                  <th className="c">Estado</th>
                 </tr>
               </thead>
               <tbody>
@@ -273,36 +274,38 @@ function TarjetaLiquidacion({ clave, liq, cfg, servicios, activas, pagos, expand
                   if (!datos || datos.total <= 0) return null;
                   const f = liq.factores?.[String(p.id)];
                   return (
-                    <tr key={p.id} style={{ borderBottom: "1px solid var(--border-light)" }}>
-                      <td style={{ padding: "6px 8px", fontWeight: 700 }}>
-                        <div>{datos.nombre}</div>
-                        {datos.inmueble && <div style={{ fontSize: 9, color: "var(--text-muted)" }}>{datos.inmueble}</div>}
-                        <div style={{ fontSize: 9, color: "var(--text-muted)", fontWeight: 400 }}>🏠 {f?.habitaciones || p.habitaciones || 1} hab · 👥 {f?.personas || p.personas || 1} pers</div>
+                    <tr key={p.id}>
+                      <td className="cell-head">
+                        <div className="strong">{datos.nombre}</div>
+                        <div className="xsmall muted">{datos.inmueble ? `${datos.inmueble} · ` : ""}🏠 {f?.habitaciones || p.habitaciones || 1} hab · 👥 {f?.personas || p.personas || 1} pers</div>
                       </td>
                       {servicios.map(s => (
-                        <td key={s.id} style={{ padding: "6px 8px", textAlign: "center", color: datos.detalles[s.id] > 0 ? "var(--text-main)" : "var(--text-muted)" }}>
-                          {datos.detalles[s.id] > 0 ? `Bs.- ${fmtMoney(datos.detalles[s.id])}` : "—"}
-                        </td>
+                        <td key={s.id} className="r num" data-label={`${s.icon} ${s.label}`}>{datos.detalles[s.id] > 0 ? `Bs.- ${fmtMoney(datos.detalles[s.id])}` : "—"}</td>
                       ))}
-                      <td style={{ padding: "6px 8px", textAlign: "center", fontWeight: 700, color: cfg.colorAcento }}>Bs.- {fmtMoney(datos.total)}</td>
-                      <td style={{ padding: "6px 8px", textAlign: "center" }}>
-                        {pagado(p)
-                          ? <span style={{ fontSize: 10, color: "var(--tag-pagado-text)", background: "var(--bg-success)", padding: "2px 8px", borderRadius: 6, fontWeight: 600, whiteSpace: "nowrap" }}>✅ Pagado</span>
-                          : <span style={{ fontSize: 10, color: "var(--star)", background: "var(--bg-warning)", padding: "2px 8px", borderRadius: 6, fontWeight: 600, whiteSpace: "nowrap" }}>⏳ Pendiente</span>}
+                      <td className="r num strong text-accent" data-label="Total">Bs.- {fmtMoney(datos.total)}</td>
+                      <td className="c" data-label="Estado">
+                        {pagado(p) ? <span className="badge badge-ok">✅ Pagado</span> : <span className="badge badge-warn">⏳ Pendiente</span>}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ background: "var(--bg-muted)", fontWeight: 700 }}>
-                  <td style={{ padding: "6px 8px" }}>Totales</td>
-                  {servicios.map(s => { const t = totalServicio(s); return <td key={s.id} style={{ padding: "6px 8px", textAlign: "center" }}>{t > 0 ? `Bs.- ${fmtMoney(t)}` : "—"}</td>; })}
-                  <td style={{ padding: "6px 8px", textAlign: "center", color: cfg.colorAcento }}>Bs.- {fmtMoney(total)}</td>
-                  <td></td>
+                <tr>
+                  <td className="cell-head">Totales</td>
+                  {servicios.map(s => { const t = totalServicio(s); return <td key={s.id} className="r num" data-label={`${s.icon} ${s.label}`}>{t > 0 ? `Bs.- ${fmtMoney(t)}` : "—"}</td>; })}
+                  <td className="r num text-accent" data-label="Total">Bs.- {fmtMoney(total)}</td>
+                  <td data-label=""></td>
                 </tr>
               </tfoot>
             </table>
+          </div>
+          <div className="xsmall muted" style={{ marginTop: 8 }}>
+            Reparto: {servicios.map(s => {
+              const ft = totalFactorServicio(s, liq, activas);
+              const r = serviciosDeLiq(liq)[s.id]?.reparto || s.reparto;
+              return <span key={s.id} style={{ marginRight: 10 }}>{s.icon} {labelReparto(r)}{ft ? ` (${fmtNum(ft)} ${unidadFactor(r)})` : ""}</span>;
+            })}
           </div>
         </div>
       )}

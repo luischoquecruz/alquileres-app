@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useMobile } from "../../hooks/useMobile.js";
 import PagoNuevo from "./PagoNuevo.jsx";
 import Historial from "./Historial.jsx";
@@ -11,38 +11,49 @@ import VistaTarifas from "./VistaTarifas.jsx";
 import VistaUsuarios from "./VistaUsuarios.jsx";
 import { filtrosIniciales, aplicarFiltros } from "../../lib/filtros.js";
 
-const btnHeader = { background: "rgba(255,255,255,.15)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", borderRadius: 6, padding: "6px 10px", fontWeight: 600, cursor: "pointer", fontSize: 11 };
+// Secciones agrupadas; `corto` se usa en la navegación inferior del celular.
+const GRUPOS = [
+  ["Operación", [
+    { id: "nuevo-pago", label: "Registrar Pago", corto: "Cobrar", icon: "💳" },
+    { id: "historial", label: "Historial", corto: "Historial", icon: "📋", cuenta: d => d.pagos.length },
+    { id: "liquidaciones", label: "Liquidaciones", corto: "Liquidar", icon: "📄" },
+    { id: "tarifas", label: "Tarifas", corto: "Tarifas", icon: "💰" },
+  ]],
+  ["Reportes", [
+    { id: "informe", label: "Resumen Financiero", corto: "Finanzas", icon: "📊" },
+    { id: "resumen-persona", label: "Resumen por Persona", corto: "Por persona", icon: "🧾" },
+  ]],
+  ["Administración", [
+    { id: "personas", label: "Personas", corto: "Personas", icon: "👥", cuenta: d => d.personas.length },
+    { id: "servicios", label: "Servicios", corto: "Servicios", icon: "📦", cuenta: d => d.servicios.length },
+    { id: "usuarios", label: "Usuarios", corto: "Usuarios", icon: "🔐" },
+  ]],
+];
+const SECCIONES = GRUPOS.flatMap(([, items]) => items);
+const NAV_MOVIL = ["nuevo-pago", "historial", "liquidaciones", "personas"];
+
+const nombreAccesible = (s, datos) => `${s.icon} ${s.label}${s.cuenta ? ` (${s.cuenta(datos)})` : ""}`;
 
 export default function VistaAdmin({ cfg, datos, acciones, sesion, cargando, esLocal, onRecargar, onLogout, onConfig, onCambiarPassword, toggleDarkMode, darkMode, notificar }) {
   const { personas, servicios, pagos, liquidaciones, tarifas, usuarios } = datos;
   const isMobile = useMobile();
   const [tab, setTab] = useState("historial");
+  const [masAbierto, setMasAbierto] = useState(false);
   const [filtros, setFiltros] = useState(filtrosIniciales);
   const filtrados = useMemo(() => aplicarFiltros(pagos, filtros), [pagos, filtros]);
-  const tabRef = useRef(null);
-  const [hasScroll, setHasScroll] = useState(false);
+
+  const ir = id => {
+    setTab(id);
+    setMasAbierto(false);
+    window.scrollTo({ top: 0 });
+  };
 
   useEffect(() => {
-    const el = tabRef.current;
-    if (!el) return;
-    const check = () => setHasScroll(el.scrollWidth > el.clientWidth + el.scrollLeft + 4);
-    check();
-    el.addEventListener("scroll", check);
-    window.addEventListener("resize", check);
-    return () => { el.removeEventListener("scroll", check); window.removeEventListener("resize", check); };
-  }, [isMobile]);
-
-  const tabs = [
-    ["nuevo-pago", "Registrar Pago", "Pago", "💳"],
-    ["historial", `Historial (${pagos.length})`, `Hist. (${pagos.length})`, "📋"],
-    ["informe", "Resumen Financiero", "Financiero", "📊"],
-    ["resumen-persona", "Resumen por Persona", "x Persona", "🧾"],
-    ["liquidaciones", "Liquidaciones", "Liq.", "📄"],
-    ["tarifas", "Tarifas", "Tarifas", "💰"],
-    ["servicios", `Servicios (${servicios.length})`, `Srv. (${servicios.length})`, "📦"],
-    ["personas", `Personas (${personas.length})`, `Pers. (${personas.length})`, "👥"],
-    ["usuarios", "Usuarios", "Usuarios", "🔐"],
-  ];
+    if (!masAbierto) return;
+    const esc = e => { if (e.key === "Escape") setMasAbierto(false); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [masAbierto]);
 
   const comunes = { cfg, acciones, notificar };
   const contenido = {
@@ -57,69 +68,117 @@ export default function VistaAdmin({ cfg, datos, acciones, sesion, cargando, esL
     usuarios: () => <VistaUsuarios {...comunes} usuarios={usuarios} personas={personas} sesion={sesion} />,
   };
 
-  const botones = (
-    <>
-      <button onClick={onConfig} title="Configuración" style={btnHeader}>⚙️{isMobile ? " Config." : ""}</button>
-      <button onClick={onRecargar} title="Actualizar datos" style={btnHeader}>{cargando ? "⏳" : "🔄"}</button>
-      <button onClick={onCambiarPassword} title="Cambiar contraseña" style={btnHeader}>🔑</button>
-      <button onClick={toggleDarkMode} title="Modo oscuro" style={{ ...btnHeader, fontSize: 14 }}>{darkMode ? "☀️" : "🌙"}</button>
-      <button onClick={onLogout} title="Cerrar sesión" style={btnHeader}>Salir</button>
-    </>
-  );
+  const inicial = String(sesion.nombre || "?").charAt(0).toUpperCase();
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--bg-muted)", display: "flex" }}>
+    <div className="admin">
       {!isMobile && (
-        <aside className="no-print" style={{ width: 230, flexShrink: 0, background: `linear-gradient(180deg,${cfg.colorPrimario},${cfg.colorAcento})`, display: "flex", flexDirection: "column", position: "sticky", top: 0, height: "100vh", overflow: "auto" }}>
-          <div style={{ padding: "16px 16px 8px", color: "#fff" }}>
-            <div style={{ fontSize: 10, opacity: .8, letterSpacing: 2, textTransform: "uppercase" }}>{cfg.orgNombre} — {cfg.orgSubtitulo}</div>
-            <div style={{ fontWeight: 800, fontSize: 15, marginTop: 4 }}>Panel Administrador</div>
-            <div style={{ fontSize: 11, opacity: .75, marginTop: 2 }}>👤 {sesion.nombre}</div>
+        <aside className="sidebar no-print">
+          <div className="sidebar-brand">
+            <div className="sidebar-org">{cfg.orgNombre}</div>
+            <div className="sidebar-title">Panel Administrador</div>
           </div>
-          <nav style={{ flex: 1, paddingTop: 4 }}>
-            {tabs.map(([id, label, , icon]) => (
-              <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined}
-                style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 16px", fontWeight: 600, fontSize: 13, border: "none", cursor: "pointer", textAlign: "left", background: tab === id ? "rgba(255,255,255,.12)" : "transparent", color: tab === id ? "#fff" : "rgba(255,255,255,.75)", borderLeft: tab === id ? "3px solid #fff" : "3px solid transparent" }}>
-                <span style={{ fontSize: 16, width: 24, textAlign: "center" }}>{icon}</span><span>{label}</span>
-              </button>
-            ))}
-          </nav>
-          {esLocal && (
-            <div style={{ margin: "0 10px 6px", padding: "6px 10px", background: "rgba(255,255,255,.12)", borderRadius: 6, textAlign: "center", color: "#fff", fontSize: 10, fontWeight: 600 }}>📁 Solo local (sin Google Sheets)</div>
-          )}
-          <div style={{ padding: "10px 12px", borderTop: "1px solid rgba(255,255,255,.12)", display: "flex", gap: 6, flexWrap: "wrap" }}>{botones}</div>
-        </aside>
-      )}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        {isMobile && (
-          <div className="no-print">
-            <div style={{ background: `linear-gradient(135deg,${cfg.colorPrimario},${cfg.colorAcento})`, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", color: "#fff", flexWrap: "wrap", gap: 8 }}>
-              <div>
-                <div style={{ fontSize: 10, opacity: .8, letterSpacing: 2, textTransform: "uppercase" }}>{cfg.orgNombre}</div>
-                <div style={{ fontWeight: 800, fontSize: 14 }}>Panel Administrador {esLocal && <span style={{ fontSize: 9, opacity: .8 }}>· 📁 Local</span>}</div>
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>{botones}</div>
-            </div>
-            <div style={{ position: "relative", borderBottom: "1px solid var(--border-light)", background: "var(--bg-card)" }}>
-              <div ref={tabRef} style={{ padding: "0 6px", display: "flex", overflowX: "auto", scrollbarWidth: "none" }}>
-                {tabs.map(([id, , corto, icon]) => (
-                  <button key={id} onClick={() => setTab(id)} aria-current={tab === id ? "page" : undefined}
-                    style={{ padding: "8px 10px", fontWeight: 600, fontSize: 12, border: "none", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0, borderBottom: tab === id ? `3px solid ${cfg.colorAcento}` : "3px solid transparent", background: "transparent", color: tab === id ? cfg.colorAcento : "var(--text-secondary)" }}>
-                    {icon} {corto}
+          <nav aria-label="Secciones">
+            {GRUPOS.map(([grupo, items]) => (
+              <div key={grupo} className="nav-group">
+                <div className="nav-group-label">{grupo}</div>
+                {items.map(s => (
+                  <button key={s.id} className="nav-item" onClick={() => ir(s.id)} aria-current={tab === s.id ? "page" : undefined} aria-label={nombreAccesible(s, datos)}>
+                    <span className="nav-icon" aria-hidden="true">{s.icon}</span>
+                    <span>{s.label}</span>
+                    {s.cuenta && <span className="nav-count" aria-hidden="true">{s.cuenta(datos)}</span>}
                   </button>
                 ))}
               </div>
-              {hasScroll && (
-                <button onClick={() => tabRef.current.scrollBy({ left: 200, behavior: "smooth" })} aria-label="Más pestañas"
-                  style={{ position: "absolute", right: 2, top: "50%", transform: "translateY(-50%)", width: 28, height: 28, borderRadius: "50%", background: "var(--bg-card)", border: "1px solid var(--border-light)", cursor: "pointer", fontSize: 14, color: "var(--text-secondary)", boxShadow: "0 1px 3px rgba(0,0,0,.15)" }}>›</button>
-              )}
+            ))}
+          </nav>
+          <div className="sidebar-footer">
+            {esLocal && <div className="local-badge" style={{ margin: "0 0 12px" }}>📁 Solo local (sin Google Sheets)</div>}
+            <div className="user-chip">
+              <div className="avatar" aria-hidden="true">{inicial}</div>
+              <div className="grow">
+                <div className="strong truncate">{sesion.nombre}</div>
+                <div className="xsmall" style={{ opacity: .7 }}>Administrador</div>
+              </div>
             </div>
+            <div className="sidebar-tools">
+              <button className="btn btn-sm btn-on-dark" onClick={onRecargar} title="Actualizar datos" aria-label="Actualizar datos">{cargando ? "⏳" : "🔄"}</button>
+              <button className="btn btn-sm btn-on-dark" onClick={onConfig} title="Configuración" aria-label="Configuración">⚙️</button>
+              <button className="btn btn-sm btn-on-dark" onClick={onCambiarPassword} title="Cambiar contraseña" aria-label="Cambiar contraseña">🔑</button>
+              <button className="btn btn-sm btn-on-dark" onClick={toggleDarkMode} title="Modo oscuro" aria-label="Cambiar modo oscuro">{darkMode ? "☀️" : "🌙"}</button>
+            </div>
+            <button className="btn btn-sm btn-on-dark btn-block" style={{ marginTop: 8 }} onClick={onLogout}>Salir</button>
           </div>
+        </aside>
+      )}
+
+      <div className="admin-main">
+        {isMobile && (
+          <header className="topbar no-print">
+            <div className="topbar-title">
+              <div className="topbar-org truncate">{cfg.orgNombre}{esLocal ? " · 📁 Local" : ""}</div>
+              <div className="topbar-section">Panel Administrador</div>
+            </div>
+            <button className="btn btn-icon" onClick={onRecargar} aria-label="Actualizar datos">{cargando ? "⏳" : "🔄"}</button>
+            <button className="btn btn-icon" onClick={toggleDarkMode} aria-label="Cambiar modo oscuro">{darkMode ? "☀️" : "🌙"}</button>
+          </header>
         )}
-        <main style={{ padding: isMobile ? 12 : 20, maxWidth: 1200, margin: "0 auto", flex: 1, width: "100%", boxSizing: "border-box" }}>
-          {contenido[tab]()}
-        </main>
+
+        <main className="admin-content">{contenido[tab]()}</main>
       </div>
+
+      {isMobile && (
+        <>
+          <nav className="bottom-nav no-print" aria-label="Secciones principales">
+            {NAV_MOVIL.map(id => {
+              const s = SECCIONES.find(x => x.id === id);
+              return (
+                <button key={id} onClick={() => ir(id)} aria-current={tab === id ? "page" : undefined}>
+                  <span className="nav-icon" aria-hidden="true">{s.icon}</span>{s.corto}
+                </button>
+              );
+            })}
+            <button onClick={() => setMasAbierto(true)} aria-current={!NAV_MOVIL.includes(tab) ? "page" : undefined} aria-haspopup="dialog">
+              <span className="nav-icon" aria-hidden="true">☰</span>Más
+            </button>
+          </nav>
+
+          {masAbierto && (
+            <>
+              <div className="sheet-backdrop" onClick={() => setMasAbierto(false)} />
+              <div className="sheet" role="dialog" aria-modal="true" aria-label="Más opciones">
+                <div className="sheet-handle" />
+                <div className="user-chip" style={{ padding: "0 4px" }}>
+                  <div className="avatar" aria-hidden="true">{inicial}</div>
+                  <div className="grow">
+                    <div className="strong truncate">{sesion.nombre}</div>
+                    <div className="xsmall muted">Administrador</div>
+                  </div>
+                </div>
+                {GRUPOS.map(([grupo, items]) => (
+                  <div key={grupo}>
+                    <div className="sheet-section">{grupo}</div>
+                    <div className="sheet-grid">
+                      {items.map(s => (
+                        <button key={s.id} className="sheet-tile" onClick={() => ir(s.id)} aria-current={tab === s.id ? "page" : undefined}>
+                          <span className="nav-icon" aria-hidden="true">{s.icon}</span>
+                          {s.label}{s.cuenta ? ` (${s.cuenta(datos)})` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <div className="sheet-section">Cuenta</div>
+                <div className="sheet-list">
+                  <button onClick={() => { setMasAbierto(false); onConfig(); }}><span aria-hidden="true">⚙️</span> Configuración</button>
+                  <button onClick={() => { setMasAbierto(false); onCambiarPassword(); }}><span aria-hidden="true">🔑</span> Cambiar contraseña</button>
+                  <button onClick={onLogout} className="text-danger"><span aria-hidden="true">🚪</span> Cerrar sesión</button>
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }

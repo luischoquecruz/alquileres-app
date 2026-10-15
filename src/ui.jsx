@@ -1,40 +1,92 @@
-// Piezas de UI compartidas por todas las vistas.
-export const Label = ({ children, size = 11 }) => (
-  <label style={{ fontSize: size, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>{children}</label>
+// Piezas de UI compartidas por todas las vistas. Los estilos viven en index.css.
+import { meses, periodoKey, periodoDeKey } from "./lib/format.js";
+
+export const Label = ({ children }) => <span className="label">{children}</span>;
+
+// Campo con etiqueta. Usar as="div" cuando el contenido no es un único control (ej. el buscador).
+export const Field = ({ label, hint, children, as = "label", className = "" }) => {
+  const Tag = as;
+  return (
+    <Tag className={`field ${className}`}>
+      {label && <span className="label">{label}</span>}
+      {children}
+      {hint && <span className="hint">{hint}</span>}
+    </Tag>
+  );
+};
+
+export const PageHeader = ({ title, sub, children }) => (
+  <div className="page-header">
+    <div>
+      <h1 className="page-title">{title}</h1>
+      {sub && <p className="page-sub">{sub}</p>}
+    </div>
+    {children}
+  </div>
 );
 
-export const Vacio = ({ children }) => (
-  <div style={{ textAlign: "center", padding: 30, color: "var(--text-muted)", border: "1px dashed var(--border-light)", borderRadius: 10 }}>{children}</div>
+export const Vacio = ({ children, icon }) => (
+  <div className="empty">{icon && <span className="empty-icon" aria-hidden="true">{icon}</span>}{children}</div>
 );
 
 export const Mensaje = ({ tipo = "ok", children }) => {
   if (!children) return null;
-  const err = tipo === "error";
-  return (
-    <div role={err ? "alert" : "status"} style={{
-      background: err ? "var(--bg-error)" : "var(--bg-success)",
-      border: `1px solid ${err ? "var(--danger-text)" : "var(--tag-pagado-text)"}`,
-      color: err ? "var(--danger-text)" : "var(--tag-pagado-text)",
-      borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 12,
-    }}>{children}</div>
-  );
+  const clase = tipo === "error" ? "alert-error" : tipo === "warn" ? "alert-warn" : "alert-ok";
+  return <div role={tipo === "error" ? "alert" : "status"} className={`alert ${clase}`}>{children}</div>;
 };
 
 export const Avisos = ({ avisos }) => (
-  <div aria-live="polite" style={{ position: "fixed", bottom: 16, left: "50%", transform: "translateX(-50%)", zIndex: 10000, display: "flex", flexDirection: "column", gap: 8, width: "min(420px, 92vw)" }}>
+  <div aria-live="polite" className="toasts">
     {avisos.map(a => (
-      <div key={a.id} role={a.tipo === "error" ? "alert" : "status"} style={{
-        background: a.tipo === "error" ? "var(--danger-text)" : "var(--tag-pagado-text)", color: "#fff",
-        borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 600, boxShadow: "var(--shadow-lg)",
-      }}>{a.tipo === "error" ? "⚠️ " : "✅ "}{a.texto}</div>
+      <div key={a.id} role={a.tipo === "error" ? "alert" : "status"} className={`toast ${a.tipo === "error" ? "toast-error" : "toast-ok"}`}>
+        {a.tipo === "error" ? "⚠️ " : "✅ "}{a.texto}
+      </div>
     ))}
   </div>
 );
 
-export const Modal = ({ children, ancho = 360 }) => (
-  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
-    <div role="dialog" aria-modal="true" style={{ background: "var(--bg-card)", borderRadius: 14, width: `min(${ancho}px, 92vw)`, maxHeight: "90vh", overflow: "auto", boxShadow: "var(--shadow-xl)" }}>
+export const Modal = ({ children, ancho = 400, onClose }) => (
+  <div className="modal-backdrop" onMouseDown={e => { if (onClose && e.target === e.currentTarget) onClose(); }}>
+    <div role="dialog" aria-modal="true" className="modal" style={{ maxWidth: ancho }}>
       {children}
     </div>
   </div>
 );
+
+// Mes + año con flechas para moverse rápido, y accesos directos a los períodos que ya tienen datos.
+export function PeriodoSelector({ mes, anio, onChange, periodos = [], etiquetaPeriodos = "Con datos:" }) {
+  const mover = delta => {
+    const i = meses.indexOf(mes) + delta;
+    const y = Number(anio) + Math.floor(i / 12);
+    onChange(meses[((i % 12) + 12) % 12], y);
+  };
+  const actual = periodoKey(mes, anio);
+  const recientes = [...periodos].sort().reverse().slice(0, 12);
+  return (
+    <div className="stack-sm">
+      <div className="periodo">
+        <button type="button" className="btn btn-secondary btn-icon" onClick={() => mover(-1)} aria-label="Mes anterior">‹</button>
+        <select className="select" value={mes} onChange={e => onChange(e.target.value, anio)} aria-label="Mes">
+          {meses.map(m => <option key={m}>{m}</option>)}
+        </select>
+        <input className="input" type="number" value={anio} onChange={e => onChange(mes, e.target.value)} aria-label="Año" />
+        <button type="button" className="btn btn-secondary btn-icon" onClick={() => mover(1)} aria-label="Mes siguiente">›</button>
+      </div>
+      {recientes.length > 0 && (
+        <div className="row" style={{ flexWrap: "nowrap" }}>
+          <span className="hint nowrap">{etiquetaPeriodos}</span>
+          <div className="chips">
+            {recientes.map(k => {
+              const p = periodoDeKey(k);
+              return (
+                <button key={k} type="button" className="chip" aria-pressed={k === actual} onClick={() => onChange(p.mes, Number(p.anio))}>
+                  {p.mes.slice(0, 3)} {p.anio}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

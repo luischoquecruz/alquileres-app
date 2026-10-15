@@ -1,17 +1,24 @@
 import { useState, useMemo } from "react";
 import { getLiq, pagosDePersonaPeriodo } from "../../lib/calculos.js";
-import { emptyForm, meses, fmtMoney, round1 } from "../../lib/format.js";
-import { useMobile } from "../../hooks/useMobile.js";
-import { inp } from "../../estilos.js";
-import { Label, Mensaje } from "../../ui.jsx";
+import { emptyForm, fmtMoney, round1 } from "../../lib/format.js";
+import { Field, Mensaje, PageHeader, PeriodoSelector } from "../../ui.jsx";
 import BuscadorPersonas from "../../components/BuscadorPersonas.jsx";
 import DetalleMontos from "../../components/DetalleMontos.jsx";
 import { useMontos } from "../../hooks/useMontos.js";
 import { imprimirBoleta } from "../../print/reportes.js";
 
+const Paso = ({ n, titulo, children }) => (
+  <section className="stack-sm">
+    <div className="row" style={{ gap: 10 }}>
+      <span className="badge badge-accent" style={{ width: 24, height: 24, padding: 0, justifyContent: "center" }}>{n}</span>
+      <span className="strong">{titulo}</span>
+    </div>
+    {children}
+  </section>
+);
+
 export default function PagoNuevo({ cfg, datos, acciones, notificar }) {
   const { personas, servicios, liquidaciones, pagos } = datos;
-  const isMobile = useMobile();
   const [form, setForm] = useState(emptyForm());
   const [guardado, setGuardado] = useState(null);
   const [enviando, setEnviando] = useState(false);
@@ -56,71 +63,80 @@ export default function PagoNuevo({ cfg, datos, acciones, notificar }) {
     if (!r) return;
     setGuardado(pago);
     setForm(emptyForm());
+    window.scrollTo({ top: 0, behavior: "smooth" });
     boleta(pago);
   };
 
+  const cambioOk = recibido >= calculo.total;
+
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto" }}>
+    <div style={{ maxWidth: 640, margin: "0 auto" }}>
+      <PageHeader title="Registrar pago" sub="Seleccione el inquilino y el período; el monto se calcula con la liquidación." />
+
       {guardado && (
-        <div role="status" style={{ background: "var(--bg-success)", border: "1px solid var(--tag-pagado-text)", borderRadius: 12, padding: isMobile ? "14px 16px" : "20px 24px", marginBottom: 16, color: "var(--tag-pagado-text)", textAlign: "center" }}>
-          <div style={{ fontSize: 28, marginBottom: 6 }}>✅</div>
-          <div style={{ fontWeight: 800, fontSize: 16 }}>{cfg.textos.mensajeExito}</div>
-          <div style={{ fontSize: 13, marginTop: 6, fontWeight: 600 }}>{guardado.inquilino} — Total: Bs.- {fmtMoney(guardado.total)}</div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 10 }}>
-            <button onClick={() => boleta(guardado)} style={{ background: "#fff", color: "var(--tag-pagado-text)", border: "2px solid var(--tag-pagado-text)", borderRadius: 8, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>🖨️ Imprimir boleta</button>
-            <button onClick={() => setGuardado(null)} style={{ background: "transparent", color: "var(--tag-pagado-text)", border: "none", cursor: "pointer", fontSize: 12, textDecoration: "underline" }}>Cerrar</button>
+        <div role="status" className="card card-body" style={{ marginBottom: 16, textAlign: "center", background: "var(--bg-success)", borderColor: "var(--tag-pagado-text)" }}>
+          <div style={{ fontSize: 32 }} aria-hidden="true">✅</div>
+          <div className="strong text-ok" style={{ fontSize: 17 }}>{cfg.textos.mensajeExito}</div>
+          <div className="small text-ok" style={{ marginTop: 4, fontWeight: 600 }}>{guardado.inquilino} — Total: Bs.- {fmtMoney(guardado.total)}</div>
+          <div className="row" style={{ justifyContent: "center", marginTop: 14 }}>
+            <button className="btn btn-primary" onClick={() => boleta(guardado)}>🖨️ Imprimir boleta</button>
+            <button className="btn btn-ghost" onClick={() => setGuardado(null)}>Cerrar</button>
           </div>
         </div>
       )}
-      <Mensaje tipo="error">{error}</Mensaje>
-      {!liqPeriodo && (
-        <div style={{ background: "var(--bg-warning)", border: "1px solid var(--star)", borderRadius: 10, padding: "10px 16px", marginBottom: 16, color: "var(--star)", fontSize: 12, textAlign: "center" }}>
-          ⚠️ No hay liquidación configurada para {form.periodoMes} {form.periodoAnio}. Cree una en la pestaña Liquidaciones.
-        </div>
-      )}
-      <div style={{ background: "var(--bg-card)", borderRadius: 16, padding: isMobile ? 16 : 24, boxShadow: "var(--shadow-md)" }}>
-        <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text-main)", marginBottom: 14 }}>💳 Registrar nuevo pago</div>
-        <div style={{ display: "grid", gap: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <div><Label size={12}>Fecha de pago *</Label><input type="date" value={form.fecha} onChange={e => setF("fecha", e.target.value)} style={inp} /></div>
-            <div><Label size={12}>Método de pago *</Label>
-              <select value={form.metodo} onChange={e => setF("metodo", e.target.value)} style={inp}>
+
+      <div className="card card-body stack" style={{ gap: 22 }}>
+        <Paso n={1} titulo="Inquilino y período">
+          <Field as="div" label="Inquilino *">
+            <BuscadorPersonas personas={activas} value={form.personaId} onChange={p => setForm(prev => ({ ...prev, personaId: String(p.id), inquilino: p.nombre }))} />
+          </Field>
+          <Field as="div" label="Período *">
+            <PeriodoSelector mes={form.periodoMes} anio={form.periodoAnio} periodos={Object.keys(liquidaciones)} etiquetaPeriodos="Liquidados:"
+              onChange={(m, a) => setForm(p => ({ ...p, periodoMes: m, periodoAnio: a }))} />
+          </Field>
+          {!liqPeriodo && (
+            <Mensaje tipo="warn">⚠️ No hay liquidación configurada para {form.periodoMes} {form.periodoAnio}. Créela en la sección Liquidaciones.</Mensaje>
+          )}
+        </Paso>
+
+        {listo && liqPeriodo && (
+          <Paso n={2} titulo="Montos">
+            <DetalleMontos liqPeriodo={liqPeriodo} periodoLabel={`${form.periodoMes} ${form.periodoAnio}`} calculo={calculo} />
+          </Paso>
+        )}
+
+        <Paso n={listo && liqPeriodo ? 3 : 2} titulo="Cobro">
+          <div className="form-grid-2">
+            <Field label="Fecha de pago *"><input className="input" type="date" value={form.fecha} onChange={e => setF("fecha", e.target.value)} /></Field>
+            <Field label="Método de pago *">
+              <select className="select" value={form.metodo} onChange={e => setF("metodo", e.target.value)}>
                 <option value="">-- Seleccione --</option>
                 {cfg.metodosPago.map(m => <option key={m}>{m}</option>)}
               </select>
-            </div>
+            </Field>
           </div>
-          <div><Label size={12}>Inquilino *</Label>
-            <BuscadorPersonas personas={activas} value={form.personaId} onChange={p => setForm(prev => ({ ...prev, personaId: String(p.id), inquilino: p.nombre }))} />
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <div><Label size={12}>Período (Mes) *</Label>
-              <select value={form.periodoMes} onChange={e => setF("periodoMes", e.target.value)} style={inp}>{meses.map(m => <option key={m}>{m}</option>)}</select>
-            </div>
-            <div><Label size={12}>Año</Label><input type="number" value={form.periodoAnio} onChange={e => setF("periodoAnio", e.target.value)} style={inp} /></div>
-          </div>
-          {listo && <DetalleMontos cfg={cfg} liqPeriodo={liqPeriodo} periodoLabel={`${form.periodoMes} ${form.periodoAnio}`} calculo={calculo} />}
           {listo && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <div><Label size={12}>Monto recibido *</Label>
-                <input type="number" step="0.1" min="0" value={form.montoRecibido} onChange={e => setF("montoRecibido", e.target.value)} style={inp} placeholder="0" />
-              </div>
-              <div><Label size={12}>Cambio</Label>
-                <div style={{ ...inp, background: "var(--bg-muted)", fontWeight: 700, fontSize: 16, color: recibido >= calculo.total ? "var(--tag-pagado-text)" : "var(--danger-text)" }}>
-                  {form.montoRecibido === "" ? "—" : recibido >= calculo.total ? `Bs.- ${fmtMoney(round1(recibido - calculo.total))}` : `Faltan Bs.- ${fmtMoney(round1(calculo.total - recibido))}`}
+            <div className="form-grid-2">
+              <Field label="Monto recibido *">
+                <input className="input input-num" type="number" inputMode="decimal" step="0.1" min="0" value={form.montoRecibido} onChange={e => setF("montoRecibido", e.target.value)} placeholder="0" />
+              </Field>
+              <Field as="div" label="Cambio">
+                <div className="input input-static num" style={{ color: form.montoRecibido === "" ? "var(--text-muted)" : cambioOk ? "var(--tag-pagado-text)" : "var(--danger-text)", fontSize: 17 }}>
+                  {form.montoRecibido === "" ? "—" : cambioOk ? `Bs.- ${fmtMoney(round1(recibido - calculo.total))}` : `Faltan Bs.- ${fmtMoney(round1(calculo.total - recibido))}`}
                 </div>
-              </div>
+              </Field>
             </div>
           )}
           {cfg.mostrarCampoNotas && (
-            <div><Label size={12}>Notas / Comprobante{cfg.requiereNotas ? " *" : ""}</Label>
-              <textarea value={form.notas} onChange={e => setF("notas", e.target.value)} rows={2} style={{ ...inp, resize: "vertical" }} placeholder="Comprobante o notas adicionales" />
-            </div>
+            <Field label={`Notas / Comprobante${cfg.requiereNotas ? " *" : ""}`}>
+              <textarea className="textarea" value={form.notas} onChange={e => setF("notas", e.target.value)} rows={2} placeholder="Comprobante o notas adicionales" />
+            </Field>
           )}
-        </div>
-        <button onClick={enviar} disabled={enviando || !liqPeriodo}
-          style={{ width: "100%", marginTop: 18, background: enviando || !liqPeriodo ? "var(--text-muted)" : cfg.colorPrimario, color: "#fff", border: "none", borderRadius: 10, padding: 13, fontWeight: 800, cursor: enviando || !liqPeriodo ? "not-allowed" : "pointer", fontSize: 15 }}>
-          {enviando ? "Guardando..." : cfg.textos.botonEnviar}
+        </Paso>
+
+        <Mensaje tipo="error">{error}</Mensaje>
+        <button className="btn btn-primary btn-lg btn-block" onClick={enviar} disabled={enviando || !liqPeriodo}>
+          {enviando ? "Guardando…" : cfg.textos.botonEnviar}
         </button>
       </div>
     </div>

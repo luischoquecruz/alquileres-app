@@ -1,16 +1,12 @@
 import { useMemo } from "react";
 import { fmtMoney, periodoKey, periodoDeKey, meses } from "../../lib/format.js";
-import { useMobile } from "../../hooks/useMobile.js";
-import { Vacio } from "../../ui.jsx";
+import { PageHeader, Vacio } from "../../ui.jsx";
 import FiltrosPagos from "./FiltrosPagos.jsx";
 
-const COLORES = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316", "#6366f1", "#14b8a6", "#e11d48", "#84cc16"];
+const COLORES = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2", "#dc2626", "#65a30d", "#4f46e5", "#0d9488", "#ea580c", "#9333ea"];
 const montoDe = (pago, sid) => Number(pago.montos?.[sid] ?? pago[sid]) || 0;
-const thS = { padding: "7px 8px", fontWeight: 600, fontSize: 10, letterSpacing: .5, textTransform: "uppercase" };
-const tdS = { padding: "6px 8px", borderBottom: "1px solid var(--border-light)" };
 
 export default function InformeFinanciero({ cfg, filtrados, filtros, setFiltros, servicios }) {
-  const isMobile = useMobile();
   const totalGeneral = filtrados.reduce((s, i) => s + Number(i.total || 0), 0);
 
   const totalesServicios = useMemo(() => Object.fromEntries(servicios.map(sv => [sv.id, filtrados.reduce((sum, p) => sum + montoDe(p, sv.id), 0)])), [filtrados, servicios]);
@@ -48,100 +44,89 @@ export default function InformeFinanciero({ cfg, filtrados, filtros, setFiltros,
   })();
 
   return (
-    <div>
-      <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text-main)", marginBottom: 14 }}>Resumen Financiero</div>
-      <div className="no-print"><FiltrosPagos filtros={filtros} setFiltros={setFiltros} metodos={cfg.metodosPago} /></div>
+    <div className="stack" style={{ gap: 20 }}>
+      <PageHeader title="Resumen Financiero" sub="Cobros del rango de fechas filtrado.">
+        {filtrados.length > 0 && <button className="btn btn-secondary no-print" onClick={() => window.print()}>🖨️ Imprimir informe</button>}
+      </PageHeader>
+      <div className="no-print" style={{ marginBottom: -4 }}><FiltrosPagos filtros={filtros} setFiltros={setFiltros} metodos={cfg.metodosPago} /></div>
 
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4,1fr)", gap: 10, marginBottom: 18 }}>
-        {[
-          { label: "Total pagos", val: filtrados.length, color: cfg.colorAcento, bg: "var(--bg-accent)" },
-          { label: "Monto total", val: `Bs.- ${fmtMoney(totalGeneral)}`, color: "var(--tag-pagado-text)", bg: "var(--bg-success)" },
-          { label: "Inquilinos únicos", val: porInquilino.length, color: "var(--tag-inquilino-text)", bg: "var(--tag-inquilino)" },
-          { label: "Método común", val: metodoComun, color: "var(--tag-metodo-text)", bg: "var(--tag-metodo)" },
-        ].map(m => (
-          <div key={m.label} style={{ background: m.bg, borderRadius: 10, padding: "14px 8px", textAlign: "center", boxShadow: "var(--shadow-sm)" }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: m.color }}>{m.val}</div>
-            <div style={{ fontSize: 10, color: "var(--text-secondary)", marginTop: 2 }}>{m.label}</div>
-          </div>
-        ))}
+      <div className="stats">
+        <div className="card stat"><div className="stat-label">Monto total</div><div className="stat-value text-ok">Bs.- {fmtMoney(totalGeneral)}</div></div>
+        <div className="card stat"><div className="stat-label">Pagos</div><div className="stat-value">{filtrados.length}</div></div>
+        <div className="card stat"><div className="stat-label">Inquilinos</div><div className="stat-value">{porInquilino.length}</div></div>
+        <div className="card stat"><div className="stat-label">Método común</div><div className="stat-value truncate" style={{ fontSize: 18 }}>{metodoComun}</div></div>
       </div>
 
       {svActivos.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${isMobile ? 130 : 160}px, 1fr))`, gap: 10, marginBottom: 18 }}>
-          {svActivos.map(sv => (
-            <div key={sv.id} style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 8, padding: "10px 14px", textAlign: "center" }}>
-              <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>{sv.icon} {sv.label}</div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-main)" }}>Bs.- {fmtMoney(totalesServicios[sv.id])}</div>
+        <div className="stats">
+          {svActivos.map((sv, si) => (
+            <div key={sv.id} className="card stat" style={{ borderLeft: `4px solid ${COLORES[si % COLORES.length]}` }}>
+              <div className="stat-label">{sv.icon} {sv.label}</div>
+              <div className="stat-value" style={{ fontSize: 19 }}>Bs.- {fmtMoney(totalesServicios[sv.id])}</div>
             </div>
           ))}
         </div>
       )}
 
       {grafico && grafico.periodos.length > 0 && (
-        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border-light)", borderRadius: 10, padding: 16, marginBottom: 18, boxShadow: "var(--shadow-sm)" }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-main)", marginBottom: 12 }}>📈 Cobrado por período y servicio</div>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 4, minHeight: 200, paddingBottom: 8, overflowX: "auto" }}>
+        <div className="card card-body">
+          <div className="card-title" style={{ marginBottom: 14 }}>Cobrado por período y servicio</div>
+          <div className="chart" role="img" aria-label="Gráfico de barras de lo cobrado por período">
             {grafico.periodos.map(per => (
-              <div key={per.key} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1, minWidth: 50 }}
-                title={`${per.label}: Bs.- ${fmtMoney(per.total)}`}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-main)", marginBottom: 2 }}>{fmtMoney(per.total)}</div>
-                <div style={{ display: "flex", flexDirection: "column-reverse", width: isMobile ? "100%" : "70%", height: 170 }}>
+              <div key={per.key} className="chart-col" title={`${per.label}: Bs.- ${fmtMoney(per.total)}`}>
+                <div className="xsmall strong num" style={{ marginBottom: 4 }}>{fmtMoney(per.total)}</div>
+                <div className="chart-bar">
                   {svActivos.map((sv, si) => {
                     const h = (per.vals[sv.id] / grafico.max) * 170;
-                    return h > 0 ? <div key={sv.id} title={`${sv.label}: Bs.- ${fmtMoney(per.vals[sv.id])}`} style={{ height: h, background: COLORES[si % COLORES.length], borderTop: "1px solid var(--bg-card)" }} /> : null;
+                    return h > 0 ? <div key={sv.id} title={`${sv.label}: Bs.- ${fmtMoney(per.vals[sv.id])}`} style={{ height: h, background: COLORES[si % COLORES.length], borderTop: "2px solid var(--bg-card)" }} /> : null;
                   })}
                 </div>
-                <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 4, textAlign: "center" }}>{per.label}</div>
+                <div className="xsmall muted" style={{ marginTop: 6, textAlign: "center" }}>{per.label}</div>
               </div>
             ))}
           </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center", paddingTop: 8, borderTop: "1px solid var(--border-light)" }}>
+          <div className="legend">
             {svActivos.map((sv, si) => (
-              <div key={sv.id} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--text-secondary)" }}>
-                <div style={{ width: 12, height: 12, borderRadius: 3, background: COLORES[si % COLORES.length] }} />{sv.icon} {sv.label}
-              </div>
+              <span key={sv.id}><i className="legend-dot" style={{ background: COLORES[si % COLORES.length] }} />{sv.icon} {sv.label}</span>
             ))}
           </div>
         </div>
       )}
 
-      {filtrados.length === 0 ? <Vacio>Sin pagos en el período</Vacio> : (
-        <>
-          <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text-main)", marginBottom: 8 }}>Desglose por Inquilino</div>
-          <div style={{ overflowX: "auto", marginBottom: 18, borderRadius: 10, border: "1px solid var(--border-light)" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, background: "var(--bg-card)", color: "var(--text-main)" }}>
+      {filtrados.length === 0 ? <Vacio icon="📊">Sin pagos en el período</Vacio> : (
+        <div>
+          <h2 className="section-title">Desglose por inquilino</h2>
+          <div className="table-wrap table-stack">
+            <table className="table">
               <thead>
-                <tr style={{ background: cfg.colorPrimario, color: "#fff" }}>
-                  <th style={thS}>#</th>
-                  <th style={{ ...thS, textAlign: "left" }}>Inquilino</th>
-                  <th style={thS}>Pagos</th>
-                  {svActivos.map(sv => <th key={sv.id} style={{ ...thS, textAlign: "right" }}>{sv.icon} {sv.label}</th>)}
-                  <th style={{ ...thS, textAlign: "right" }}>Total</th>
+                <tr>
+                  <th>Inquilino</th>
+                  <th className="c">Pagos</th>
+                  {svActivos.map(sv => <th key={sv.id} className="r">{sv.icon} {sv.label}</th>)}
+                  <th className="r">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {porInquilino.map((g, i) => (
-                  <tr key={i} style={{ background: i % 2 === 0 ? "var(--bg-card)" : "var(--bg-muted)" }}>
-                    <td style={{ ...tdS, textAlign: "center", fontWeight: 700, color: cfg.colorAcento }}>{i + 1}</td>
-                    <td style={tdS}>{g.inquilino}</td>
-                    <td style={{ ...tdS, textAlign: "center", fontWeight: 700 }}>{g.pagos}</td>
-                    {svActivos.map(sv => <td key={sv.id} style={{ ...tdS, textAlign: "right" }}>{g.montos[sv.id] ? fmtMoney(g.montos[sv.id]) : "—"}</td>)}
-                    <td style={{ ...tdS, textAlign: "right", fontWeight: 700, color: cfg.colorAcento }}>{fmtMoney(g.total)}</td>
+                  <tr key={i}>
+                    <td className="cell-head strong">{g.inquilino}</td>
+                    <td className="c num" data-label="Pagos">{g.pagos}</td>
+                    {svActivos.map(sv => <td key={sv.id} className="r num" data-label={`${sv.icon} ${sv.label}`}>{g.montos[sv.id] ? fmtMoney(g.montos[sv.id]) : "—"}</td>)}
+                    <td className="r num strong text-accent" data-label="Total">{fmtMoney(g.total)}</td>
                   </tr>
                 ))}
-                <tr style={{ background: "var(--bg-muted)", fontWeight: 700 }}>
-                  <td colSpan={2} style={{ padding: "6px 8px", textAlign: "right" }}>TOTAL</td>
-                  <td style={{ padding: "6px 8px", textAlign: "center" }}>{filtrados.length}</td>
-                  {svActivos.map(sv => <td key={sv.id} style={{ padding: "6px 8px", textAlign: "right" }}>{fmtMoney(totalesServicios[sv.id])}</td>)}
-                  <td style={{ padding: "6px 8px", textAlign: "right", color: cfg.colorAcento }}>{fmtMoney(totalGeneral)}</td>
-                </tr>
               </tbody>
+              <tfoot>
+                <tr>
+                  <td className="cell-head">TOTAL</td>
+                  <td className="c num" data-label="Pagos">{filtrados.length}</td>
+                  {svActivos.map(sv => <td key={sv.id} className="r num" data-label={`${sv.icon} ${sv.label}`}>{fmtMoney(totalesServicios[sv.id])}</td>)}
+                  <td className="r num text-accent" data-label="Total">{fmtMoney(totalGeneral)}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
-          <div className="no-print" style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button onClick={() => window.print()} style={{ background: cfg.colorPrimario, color: "#fff", border: "none", borderRadius: 8, padding: "11px 26px", fontWeight: 700, cursor: "pointer", fontSize: 14 }}>🖨️ Imprimir informe</button>
-          </div>
-        </>
+        </div>
       )}
     </div>
   );
