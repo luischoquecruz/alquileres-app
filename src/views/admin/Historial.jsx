@@ -1,12 +1,17 @@
 import { fmtMoney, fmtDate } from "../../lib/format.js";
-import { PageHeader, Vacio } from "../../ui.jsx";
+import { BotonWhatsApp, PageHeader, Vacio } from "../../ui.jsx";
+import { compartirWhatsApp, textoPagos, textoRecibo } from "../../lib/whatsapp.js";
 import { imprimirRecibo, imprimirPagos } from "../../print/reportes.js";
 import FiltrosPagos from "./FiltrosPagos.jsx";
 
-export default function Historial({ cfg, pagos, filtrados, filtros, setFiltros, servicios, acciones, cargando, esLocal, notificar }) {
+export default function Historial({ cfg, pagos, personas = [], filtrados, filtros, setFiltros, servicios, acciones, cargando, esLocal, notificar }) {
   const total = filtrados.reduce((s, i) => s + Number(i.total || 0), 0);
   const ordenados = [...filtrados].sort((a, b) => String(b.fecha).localeCompare(String(a.fecha)) || Number(b.id) - Number(a.id));
   const bloqueada = () => notificar("El navegador bloqueó la ventana de impresión. Permita ventanas emergentes.", "error");
+
+  const telefonoDe = pago => personas.find(p => String(p.id) === String(pago.personaId))?.telefono;
+  const enviarRecibo = pago => compartirWhatsApp({ texto: textoRecibo({ cfg, pago, servicios }), telefono: telefonoDe(pago), codigoPais: cfg.codigoPais });
+  const compartirFiltrados = () => compartirWhatsApp({ texto: textoPagos({ cfg, pagos: ordenados, total, desde: filtros.desde, hasta: filtros.hasta }), codigoPais: cfg.codigoPais });
 
   const eliminar = s => {
     if (!confirm(`¿Eliminar el pago de ${s.inquilino} (${s.periodoMes} ${s.periodoAnio}, Bs.- ${fmtMoney(s.total)})?`)) return;
@@ -19,6 +24,7 @@ export default function Historial({ cfg, pagos, filtrados, filtros, setFiltros, 
         <button className="btn btn-secondary" onClick={() => imprimirPagos({ cfg, pagos: ordenados, total }) || bloqueada()} disabled={!filtrados.length}>
           🖨️ Imprimir filtrados
         </button>
+        {filtrados.length > 0 && <BotonWhatsApp onCompartir={compartirFiltrados} notificar={notificar} title="Compartir el listado filtrado por WhatsApp">Compartir</BotonWhatsApp>}
       </PageHeader>
 
       <FiltrosPagos filtros={filtros} setFiltros={setFiltros} metodos={cfg.metodosPago} />
@@ -51,6 +57,7 @@ export default function Historial({ cfg, pagos, filtrados, filtros, setFiltros, 
                   {s.notas && <div className="xsmall" style={{ color: "var(--text-comment)", fontStyle: "italic", marginTop: 6 }}>“{s.notas}”</div>}
                 </div>
                 <div className="actions" style={{ flexDirection: "column" }}>
+                  <BotonWhatsApp soloIcono className="btn-sm" onCompartir={() => enviarRecibo(s)} notificar={notificar} title="Enviar recibo por WhatsApp" />
                   <button className="btn btn-secondary btn-icon btn-sm" onClick={() => imprimirRecibo({ cfg, pago: s, servicios }) || bloqueada()} aria-label="Imprimir recibo" title="Imprimir recibo">🖨️</button>
                   <button className="btn btn-danger btn-icon btn-sm" onClick={() => eliminar(s)} aria-label="Eliminar pago" title="Eliminar pago">✕</button>
                 </div>

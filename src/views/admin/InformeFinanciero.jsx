@@ -1,12 +1,14 @@
 import { useMemo } from "react";
 import { fmtMoney, periodoKey, periodoDeKey, meses } from "../../lib/format.js";
-import { PageHeader, Vacio } from "../../ui.jsx";
+import { BotonWhatsApp, PageHeader, Vacio } from "../../ui.jsx";
+import { compartirWhatsApp, textoInformeFinanciero } from "../../lib/whatsapp.js";
+import { imprimirInformeFinanciero } from "../../print/reportes.js";
 import FiltrosPagos from "./FiltrosPagos.jsx";
 
 const COLORES = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#db2777", "#0891b2", "#dc2626", "#65a30d", "#4f46e5", "#0d9488", "#ea580c", "#9333ea"];
 const montoDe = (pago, sid) => Number(pago.montos?.[sid] ?? pago[sid]) || 0;
 
-export default function InformeFinanciero({ cfg, filtrados, filtros, setFiltros, servicios }) {
+export default function InformeFinanciero({ cfg, filtrados, filtros, setFiltros, servicios, notificar }) {
   const totalGeneral = filtrados.reduce((s, i) => s + Number(i.total || 0), 0);
 
   const totalesServicios = useMemo(() => Object.fromEntries(servicios.map(sv => [sv.id, filtrados.reduce((sum, p) => sum + montoDe(p, sv.id), 0)])), [filtrados, servicios]);
@@ -43,10 +45,24 @@ export default function InformeFinanciero({ cfg, filtrados, filtros, setFiltros,
     return Object.entries(m).sort((a, b) => b[1] - a[1])[0]?.[0] || "—";
   })();
 
+  const datosInforme = () => ({
+    cfg, filtros, total: totalGeneral, cantidad: filtrados.length, metodoComun, periodosGrafico: grafico?.periodos || [],
+    porServicio: svActivos.map(s => ({ s, monto: totalesServicios[s.id] })), porInquilino, servicios: svActivos,
+  });
+  const imprimir = () => {
+    if (!imprimirInformeFinanciero(datosInforme())) notificar("El navegador bloqueó la ventana de impresión. Permita ventanas emergentes.", "error");
+  };
+  const compartir = () => compartirWhatsApp({ texto: textoInformeFinanciero(datosInforme()), codigoPais: cfg.codigoPais });
+
   return (
     <div className="stack" style={{ gap: 20 }}>
       <PageHeader title="Resumen Financiero" sub="Cobros del rango de fechas filtrado.">
-        {filtrados.length > 0 && <button className="btn btn-secondary no-print" onClick={() => window.print()}>🖨️ Imprimir informe</button>}
+        {filtrados.length > 0 && (
+          <div className="row no-print">
+            <button className="btn btn-secondary" onClick={imprimir}>🖨️ Imprimir informe</button>
+            <BotonWhatsApp onCompartir={compartir} notificar={notificar} title="Compartir el resumen por WhatsApp">Compartir</BotonWhatsApp>
+          </div>
+        )}
       </PageHeader>
       <div className="no-print" style={{ marginBottom: -4 }}><FiltrosPagos filtros={filtros} setFiltros={setFiltros} metodos={cfg.metodosPago} /></div>
 

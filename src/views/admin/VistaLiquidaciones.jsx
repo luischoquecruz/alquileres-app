@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
-import { SEReparto, serviciosDeLiq, totalesPorPersona, totalFactorServicio, montoPagado } from "../../lib/calculos.js";
-import { mesActual, anioActual, periodoKey, periodoDeKey, fmtMoney, fmtNum, round1 } from "../../lib/format.js";
-import { Field, Mensaje, PageHeader, PeriodoSelector, Vacio } from "../../ui.jsx";
+import { SEReparto, serviciosDeLiq, totalesPorPersona, totalFactorServicio, montoPagado, personasDeLiquidacion } from "../../lib/calculos.js";
+import { mesActual, anioActual, periodoKey, periodoDeKey, fmtMoney, fmtNum, fmtPrecio } from "../../lib/format.js";
+import { BotonWhatsApp, Mensaje, PageHeader, PeriodoSelector, Vacio } from "../../ui.jsx";
+import { compartirWhatsApp, textoCobroLiquidacion, textoResumenLiquidacion } from "../../lib/whatsapp.js";
 import { labelReparto } from "../../hooks/useMontos.js";
-import { imprimirLiquidacion } from "../../print/reportes.js";
+import { imprimirLiquidacion, datosInformeLiquidacion } from "../../print/reportes.js";
 
 const REPARTOS = [
   { value: SEReparto.UNIDAD, label: "1 solo pago (por unidad)" },
@@ -11,6 +12,7 @@ const REPARTOS = [
   { value: SEReparto.PERSONAS, label: "Por cantidad de personas" },
 ];
 const unidadFactor = r => (r === SEReparto.HABITACIONES ? "hab" : "pers");
+const round2 = n => Math.round(n * 100) / 100;
 
 // Construye la liquidación a guardar a partir del borrador y las tarifas del período.
 const construirLiquidacion = (edit, servicios, tarifasPeriodo, activas) => {
@@ -28,7 +30,7 @@ const construirLiquidacion = (edit, servicios, tarifasPeriodo, activas) => {
   });
   servicios.forEach(s => {
     const tf = totalFactorServicio(s, data, activas);
-    if (tf) data.servicios[s.id].valorPorFactor = round1(data.servicios[s.id].totalFactura / tf);
+    if (tf) data.servicios[s.id].valorPorFactor = round2(data.servicios[s.id].totalFactura / tf);
     else delete data.servicios[s.id].valorPorFactor;
   });
   return data;
@@ -97,7 +99,7 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
     if (r) { setMsg(`✅ Liquidación guardada para ${mes} ${anio}`); setTimeout(() => setMsg(""), 3000); }
   };
 
-  const contexto = (clave, liq) => ({ cfg, clave, liq, servicios, activas, pagos });
+  const contexto = (clave, liq) => ({ cfg, clave, liq, servicios, personas, pagos });
   const imprimir = (clave, liq) => {
     if (!imprimirLiquidacion(contexto(clave, liq))) notificar("El navegador bloqueó la ventana de impresión. Permita ventanas emergentes.", "error");
   };
@@ -108,6 +110,17 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
     } catch (e) {
       notificar("No se pudo generar el PDF: " + e.message, "error");
     }
+  };
+  // Resumen para el grupo: en el celular adjunta el PDF; en la computadora envía el texto
+  const compartirResumen = async (clave, liq) => {
+    const ctx = contexto(clave, liq);
+    const texto = textoResumenLiquidacion({ cfg, d: datosInformeLiquidacion(ctx) });
+    let archivo;
+    try {
+      const { archivoPdfLiquidacion } = await import("../../print/liquidacionPdf.js");
+      archivo = await archivoPdfLiquidacion(ctx);
+    } catch { /* sin PDF se comparte solo el texto */ }
+    return compartirWhatsApp({ texto, archivo, codigoPais: cfg.codigoPais });
   };
 
   return (
@@ -131,7 +144,8 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
             {servicios.map(s => {
               const liq = borrador.servicios[s.id];
               const tf = totalFactorServicio(s, borrador, activas);
-              const precio = tf ? round1(liq.totalFactura / tf) : 0;
+              const precio = tf ? round2(liq.totalFactura / tf) : 0;
+              const porUnidad = liq.reparto === SEReparto.UNIDAD;
               const u = unidadFactor(liq.reparto);
               return (
                 <div key={s.id} className="card" style={{ boxShadow: "none", background: "var(--bg-muted)", padding: 14 }}>
@@ -139,13 +153,13 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
                     <div>
                       <div className="strong">{s.icon} {s.label}</div>
                       <div className="xsmall muted">
-                        {liq.totalFactura > 0 ? `Factura Bs.- ${fmtMoney(liq.totalFactura)}` : "Sin tarifa"}
+                        {liq.totalFactura > 0 ? (porUnidad ? `Bs.- ${fmtMoney(liq.totalFactura)} por inquilino` : `Factura Bs.- ${fmtMoney(liq.totalFactura)}`) : "Sin tarifa"}
                         {liq.consumoTotal ? ` · ${fmtNum(liq.consumoTotal)} ${s.unit}` : ""}
                       </div>
                     </div>
                     {liq.totalFactura > 0 && tf > 0 && (
                       <div style={{ textAlign: "right" }}>
-                        <div className="strong num text-accent">Bs.- {fmtMoney(precio)}/{u}</div>
+                        <div className="strong num text-accent">Bs.- {fmtPrecio(precio)}/{u}</div>
                         <div className="xsmall muted num">× {fmtNum(tf)} {u}</div>
                       </div>
                     )}
@@ -209,9 +223,9 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
         {Object.keys(liquidaciones).length === 0 ? <Vacio icon="📄">No hay liquidaciones configuradas aún</Vacio> : (
           <div className="list">
             {Object.entries(liquidaciones).sort((a, b) => b[0].localeCompare(a[0])).map(([k, v]) => (
-              <TarjetaLiquidacion key={k} clave={k} liq={v} servicios={servicios} activas={activas} pagos={pagos} actual={k === key}
+              <TarjetaLiquidacion key={k} cfg={cfg} clave={k} liq={v} servicios={servicios} personas={personas} pagos={pagos} actual={k === key} notificar={notificar}
                 expandido={expandKey === k} onToggle={() => setExpandKey(expandKey === k ? null : k)}
-                onEditar={() => editarPeriodo(k)} onImprimir={() => imprimir(k, v)} onPdf={() => pdf(k, v)} />
+                onEditar={() => editarPeriodo(k)} onImprimir={() => imprimir(k, v)} onPdf={() => pdf(k, v)} onCompartir={() => compartirResumen(k, v)} />
             ))}
           </div>
         )}
@@ -220,15 +234,23 @@ export default function VistaLiquidaciones({ cfg, personas, liquidaciones, servi
   );
 }
 
-function TarjetaLiquidacion({ clave, liq, servicios, activas, pagos, actual, expandido, onToggle, onEditar, onImprimir, onPdf }) {
+function TarjetaLiquidacion({ cfg, clave, liq, servicios, personas, pagos, actual, notificar, expandido, onToggle, onEditar, onImprimir, onPdf, onCompartir }) {
   const { label, mes, anio } = periodoDeKey(clave);
-  const totInq = useMemo(() => totalesPorPersona(liq, servicios, activas), [liq, servicios, activas]);
+  // Quienes participaron en esta liquidación (aunque hoy estén inactivos)
+  const gente = useMemo(() => personasDeLiquidacion(liq, personas), [liq, personas]);
+  const totInq = useMemo(() => totalesPorPersona(liq, servicios, gente), [liq, servicios, gente]);
   const pagado = p => montoPagado(pagos, p, mes, anio) > 0;
-  const conMonto = activas.filter(p => totInq[String(p.id)]?.total > 0);
+  const conMonto = gente.filter(p => totInq[String(p.id)]?.total > 0);
   const totalPagados = conMonto.filter(pagado).length;
   const totalPendientes = conMonto.length - totalPagados;
   const total = Object.values(totInq).reduce((s, i) => s + i.total, 0);
   const totalServicio = s => Object.values(totInq).reduce((sum, i) => sum + (i.detalles[s.id] || 0), 0);
+
+  const enviarCobro = p => {
+    const datos = totInq[String(p.id)];
+    const texto = textoCobroLiquidacion({ cfg, periodo: label, nombre: p.nombre || "", detalles: datos.detalles, total: datos.total, servicios, pagado: pagado(p) });
+    return compartirWhatsApp({ texto, telefono: p.telefono, codigoPais: cfg.codigoPais });
+  };
 
   return (
     <div className="card" style={actual ? { borderColor: "var(--accent)" } : undefined}>
@@ -254,6 +276,7 @@ function TarjetaLiquidacion({ clave, liq, servicios, activas, pagos, actual, exp
         <button className="btn btn-secondary btn-sm" onClick={onEditar}>✏️ Editar</button>
         <button className="btn btn-secondary btn-sm" onClick={onImprimir}>🖨️ Imprimir</button>
         <button className="btn btn-secondary btn-sm" onClick={onPdf}>📄 PDF</button>
+        <BotonWhatsApp className="btn-sm" onCompartir={onCompartir} notificar={notificar} title="Compartir el resumen por WhatsApp">Compartir</BotonWhatsApp>
       </div>
 
       {expandido && (
@@ -266,17 +289,18 @@ function TarjetaLiquidacion({ clave, liq, servicios, activas, pagos, actual, exp
                   {servicios.map(s => <th key={s.id} className="r">{s.icon} {s.label}</th>)}
                   <th className="r">Total</th>
                   <th className="c">Estado</th>
+                  <th className="c">Enviar</th>
                 </tr>
               </thead>
               <tbody>
-                {activas.map(p => {
+                {gente.map(p => {
                   const datos = totInq[String(p.id)];
                   if (!datos || datos.total <= 0) return null;
                   const f = liq.factores?.[String(p.id)];
                   return (
                     <tr key={p.id}>
                       <td className="cell-head">
-                        <div className="strong">{datos.nombre}</div>
+                        <div className="strong">{datos.nombre || "(persona eliminada)"}{p.activo === false && <span className="xsmall muted" style={{ fontWeight: 400 }}> · inactivo</span>}</div>
                         <div className="xsmall muted">{datos.inmueble ? `${datos.inmueble} · ` : ""}🏠 {f?.habitaciones || p.habitaciones || 1} hab · 👥 {f?.personas || p.personas || 1} pers</div>
                       </td>
                       {servicios.map(s => (
@@ -285,6 +309,10 @@ function TarjetaLiquidacion({ clave, liq, servicios, activas, pagos, actual, exp
                       <td className="r num strong text-accent" data-label="Total">Bs.- {fmtMoney(datos.total)}</td>
                       <td className="c" data-label="Estado">
                         {pagado(p) ? <span className="badge badge-ok">✅ Pagado</span> : <span className="badge badge-warn">⏳ Pendiente</span>}
+                      </td>
+                      <td className="c" data-label="Enviar cobro">
+                        <BotonWhatsApp soloIcono className="btn-sm" onCompartir={() => enviarCobro(p)} notificar={notificar}
+                          title={p.telefono ? `Enviar a ${datos.nombre} por WhatsApp` : `Enviar a ${datos.nombre} (sin teléfono: elija el contacto)`} />
                       </td>
                     </tr>
                   );
@@ -296,13 +324,14 @@ function TarjetaLiquidacion({ clave, liq, servicios, activas, pagos, actual, exp
                   {servicios.map(s => { const t = totalServicio(s); return <td key={s.id} className="r num" data-label={`${s.icon} ${s.label}`}>{t > 0 ? `Bs.- ${fmtMoney(t)}` : "—"}</td>; })}
                   <td className="r num text-accent" data-label="Total">Bs.- {fmtMoney(total)}</td>
                   <td data-label=""></td>
+                  <td data-label=""></td>
                 </tr>
               </tfoot>
             </table>
           </div>
           <div className="xsmall muted" style={{ marginTop: 8 }}>
             Reparto: {servicios.map(s => {
-              const ft = totalFactorServicio(s, liq, activas);
+              const ft = totalFactorServicio(s, liq, gente);
               const r = serviciosDeLiq(liq)[s.id]?.reparto || s.reparto;
               return <span key={s.id} style={{ marginRight: 10 }}>{s.icon} {labelReparto(r)}{ft ? ` (${fmtNum(ft)} ${unidadFactor(r)})` : ""}</span>;
             })}

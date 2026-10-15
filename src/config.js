@@ -33,6 +33,8 @@ export const CONFIG_DEFAULT = {
     mensajeExito: "✅ ¡Pago registrado correctamente!",
   },
 
+  codigoPais: "591", // se antepone a los teléfonos locales al abrir WhatsApp
+
   mostrarCampoNotas: true,
   requiereNotas: false,
   exitoDelay: 5000,

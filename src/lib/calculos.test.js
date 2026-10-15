@@ -78,6 +78,37 @@ describe("reparto", () => {
     expect(totalFactorServicio(alquiler, liqBase(), personas)).toBeNull();
   });
 
+  it("con divisiones inexactas las partes redondeadas suman exactamente la factura", () => {
+    // 111.4 entre 8+1+2+7+1+1 = 20 personas: el redondeo independiente sumaba 111.5
+    const gente = [8, 1, 2, 7, 1, 1].map((n, i) => ({ id: i + 1, nombre: `P${i}`, habitaciones: 1, personas: n }));
+    const liq = {
+      servicios: { agua: { totalFactura: 111.4, reparto: SEReparto.PERSONAS } },
+      factores: Object.fromEntries(gente.map(p => [p.id, { habitaciones: 1, personas: p.personas }])),
+    };
+    const tot = totalesPorPersona(liq, [agua], gente);
+    const suma = Object.values(tot).reduce((s, t) => s + t.detalles.agua, 0);
+    expect(Math.round(suma * 10) / 10).toBe(111.4);
+    expect(detalleServicio(agua, liq, gente[0], gente).precio).toBe(5.57);
+  });
+
+  it("el reparto no depende del orden de la lista de personas", () => {
+    const liq = { servicios: { luz: { totalFactura: 100, reparto: SEReparto.HABITACIONES } }, factores: { 1: { habitaciones: 1 }, 2: { habitaciones: 1 }, 3: { habitaciones: 1 } } };
+    const a = [ana, beto, caro].map(p => montoServicio(luz, liq, p, [ana, beto, caro]));
+    const b = [ana, beto, caro].map(p => montoServicio(luz, liq, p, [caro, beto, ana]));
+    expect(a).toEqual(b);
+    expect(a.reduce((s, x) => s + x, 0)).toBeCloseTo(100, 5);
+  });
+
+  it("un inquilino que no estaba en la liquidación no recibe cargos de ese período", () => {
+    const nuevo = { id: 9, nombre: "Nuevo", habitaciones: 1, personas: 1 };
+    const base = [...personas, nuevo];
+    expect(montoServicio(luz, liqBase(), nuevo, base)).toBe(0);
+    expect(montoServicio(alquiler, liqBase(), nuevo, base)).toBe(0);
+    expect(estadoCuenta(nuevo, { "2026-01": liqBase() }, servicios, base, []).totalDebe).toBe(0);
+    // los demás no cambian por su llegada
+    expect(montoServicio(luz, liqBase(), ana, base)).toBe(100);
+  });
+
   it("servicios visibles de una persona siguen la misma regla", () => {
     const liq = liqBase({ inquilinos: { 1: { servicios: ["luz"] }, 2: { servicios: [] } } });
     expect(serviciosDePersona(servicios, liq, ana).map(s => s.id)).toEqual(["luz"]);

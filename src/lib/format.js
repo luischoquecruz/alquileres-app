@@ -18,6 +18,11 @@ export const fmtMoney = n => {
   if (n === "" || n === undefined || n === null) return "";
   return Number(n).toLocaleString("es-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 };
+// Precio unitario (por habitación/persona) con 2 decimales para que precio × cantidad cuadre con el monto
+export const fmtPrecio = n => {
+  if (n === "" || n === undefined || n === null) return "";
+  return Number(n).toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
 export const fmtNum = n => {
   if (n === "" || n === undefined || n === null) return "";
   return Number(n).toLocaleString("es-ES");

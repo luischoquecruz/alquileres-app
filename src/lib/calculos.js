@@ -37,6 +37,17 @@ export const getPersonasSnapshot = (liqPeriodo, personas) => {
   return base;
 };
 
+const tieneSnapshot = liqPeriodo => !!liqPeriodo?.factores && Object.keys(liqPeriodo.factores).length > 0;
+
+// Una liquidación guardada con `factores` solo incluye a quienes vivían ahí al guardarla:
+// un inquilino que llegó después no debe recibir cargos de ese período.
+export const participaEnLiquidacion = (liqPeriodo, persona) =>
+  !tieneSnapshot(liqPeriodo) || Object.prototype.hasOwnProperty.call(liqPeriodo.factores, String(persona.id));
+
+// Personas que aparecen en el informe de una liquidación, con sus datos (nombre, inmueble) cuando se conocen.
+export const personasDeLiquidacion = (liqPeriodo, personas) =>
+  tieneSnapshot(liqPeriodo) ? getPersonasSnapshot(liqPeriodo, personas) : personas.filter(p => p.activo !== false);
+
 export const asignadosDe = (liqPeriodo, personaId) => liqPeriodo?.inquilinos?.[String(personaId)]?.servicios || [];
 
 // Una persona sin servicios marcados participa de todos (compatibilidad con liquidaciones sin asignación).
@@ -53,25 +64,47 @@ export const personasDelServicio = (liqPeriodo, servicioId, personasBase) =>
 export const serviciosDePersona = (servicios, liqPeriodo, persona) =>
   persona && liqPeriodo ? servicios.filter(s => personaTieneServicio(liqPeriodo, persona.id, s.id)) : servicios;
 
+const round2 = n => Math.round(n * 100) / 100;
+
+// Reparte `total` en décimos proporcionalmente a `pesos` (método del mayor resto),
+// de modo que las partes redondeadas sumen exactamente el total.
+export const repartirExacto = (total, pesos) => {
+  const decimos = Math.round(total * 10);
+  const suma = pesos.reduce((a, b) => a + b, 0);
+  if (suma <= 0) return pesos.map(() => 0);
+  const exactos = pesos.map(p => decimos * p / suma);
+  const partes = exactos.map(Math.floor);
+  let resto = decimos - partes.reduce((a, b) => a + b, 0);
+  exactos
+    .map((x, i) => ({ i, frac: x - partes[i] }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i)
+    .forEach(({ i }) => { if (resto > 0) { partes[i] += 1; resto -= 1; } });
+  return partes.map(d => d / 10);
+};
+
 // Detalle del cálculo de un servicio para una persona: { monto, factor, totalFactor, precio }.
+// `precio` es el valor por habitación/persona (2 decimales, solo informativo).
 export const detalleServicio = (servicio, liqPeriodo, persona, personasBase) => {
   const vacio = { monto: 0, factor: 0, totalFactor: 0, precio: 0 };
   const liq = serviciosDeLiq(liqPeriodo)[servicio.id];
   if (!liq || !persona) return vacio;
   const totalFactura = Number(liq.totalFactura) || 0;
   if (totalFactura <= 0) return vacio;
+  if (!participaEnLiquidacion(liqPeriodo, persona)) return vacio;
   if (!personaTieneServicio(liqPeriodo, persona.id, servicio.id)) return vacio;
   const reparto = liq.reparto || servicio.reparto;
   if (reparto === SEReparto.UNIDAD) return { monto: totalFactura, factor: 1, totalFactor: 1, precio: totalFactura };
   const factor = factorPersona(liqPeriodo, persona, reparto);
-  const totalFactor = calcTotalFactor(personasDelServicio(liqPeriodo, servicio.id, personasBase), reparto, liqPeriodo.factores);
+  // Orden fijo por id: el reparto del resto no depende de qué lista de personas pase cada vista
+  const participantes = personasDelServicio(liqPeriodo, servicio.id, personasBase)
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const totalFactor = calcTotalFactor(participantes, reparto, liqPeriodo.factores);
   if (factor <= 0 || totalFactor <= 0) return vacio;
-  return {
-    monto: round1(totalFactura * factor / totalFactor),
-    factor,
-    totalFactor,
-    precio: round1(totalFactura / totalFactor),
-  };
+  const i = participantes.findIndex(p => String(p.id) === String(persona.id));
+  const monto = i >= 0
+    ? repartirExacto(totalFactura, participantes.map(p => factorPersona(liqPeriodo, p, reparto)))[i]
+    : round1(totalFactura * factor / totalFactor);
+  return { monto, factor, totalFactor, precio: round2(totalFactura / totalFactor) };
 };
 
 export const montoServicio = (servicio, liqPeriodo, persona, personasBase) =>

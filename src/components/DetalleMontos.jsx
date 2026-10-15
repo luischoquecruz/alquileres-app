@@ -1,6 +1,6 @@
 import { SEReparto, serviciosDeLiq } from "../lib/calculos.js";
 import { labelReparto } from "../hooks/useMontos.js";
-import { fmtMoney, fmtNum } from "../lib/format.js";
+import { fmtMoney, fmtNum, fmtPrecio } from "../lib/format.js";
 
 export default function DetalleMontos({ liqPeriodo, periodoLabel, calculo }) {
   const srvLiq = serviciosDeLiq(liqPeriodo);
@@ -34,8 +34,8 @@ export default function DetalleMontos({ liqPeriodo, periodoLabel, calculo }) {
               </div>
               {reparte && d.totalFactor > 0 && (
                 <div className="xsmall muted" style={{ marginTop: 4 }}>
-                  Bs.- {fmtMoney(d.precio)} × {fmtNum(d.factor)} {r === SEReparto.HABITACIONES ? "hab." : "pers."}
-                  {" · "}factura Bs.- {fmtMoney(liq.totalFactura)} ÷ {fmtNum(d.totalFactor)}
+                  Factura Bs.- {fmtMoney(liq.totalFactura)} × {fmtNum(d.factor)}/{fmtNum(d.totalFactor)} {r === SEReparto.HABITACIONES ? "hab." : "pers."}
+                  {" · "}Bs.- {fmtPrecio(d.precio)} por {r === SEReparto.HABITACIONES ? "hab." : "pers."}
                 </div>
               )}
             </div>

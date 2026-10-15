@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { getLiq, estadoCuenta } from "../lib/calculos.js";
 import { emptyForm, fmtMoney, round1 } from "../lib/format.js";
-import { Field, Mensaje, PeriodoSelector } from "../ui.jsx";
+import { BotonWhatsApp, Field, Mensaje, PeriodoSelector } from "../ui.jsx";
+import { compartirWhatsApp, textoEstadoCuenta } from "../lib/whatsapp.js";
 import BuscadorPersonas from "../components/BuscadorPersonas.jsx";
 import DetalleMontos from "../components/DetalleMontos.jsx";
 import { useMontos } from "../hooks/useMontos.js";
@@ -73,7 +74,13 @@ export default function VistaPublica({ cfg, datos, esLocal, errorCarga, cargando
             <div className="stack-sm">
               <div className="row-between">
                 <div className="strong text-danger">⚠️ Deuda acumulada — Bs.- {fmtMoney(deuda.total)}</div>
-                <button className="btn btn-secondary btn-sm" onClick={imprimir}>🖨️ Imprimir</button>
+                <div className="row">
+                  <button className="btn btn-secondary btn-sm" onClick={imprimir}>🖨️ Imprimir</button>
+                  <BotonWhatsApp className="btn-sm" notificar={notificar} title="Compartir el detalle de la deuda por WhatsApp"
+                    onCompartir={() => compartirWhatsApp({ texto: textoEstadoCuenta({ cfg, nombre: personaSel.nombre, periodos: deuda.periodos, servicios, soloDeuda: true }), codigoPais: cfg.codigoPais })}>
+                    Compartir
+                  </BotonWhatsApp>
+                </div>
               </div>
               <div className="table-wrap table-stack">
                 <table className="table">

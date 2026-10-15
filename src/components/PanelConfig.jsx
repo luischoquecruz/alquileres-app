@@ -70,6 +70,9 @@ export default function PanelConfig({ config, gasUrl, onGuardar, onCambiarUrl, o
             <div className="stack">
               <label className="check"><input type="checkbox" checked={draft.mostrarCampoNotas} onChange={e => set("mostrarCampoNotas", e.target.checked)} /> Mostrar campo Notas / Comprobante</label>
               <label className="check"><input type="checkbox" checked={draft.requiereNotas} onChange={e => set("requiereNotas", e.target.checked)} /> Notas obligatorias</label>
+              <Field label="Código de país para WhatsApp" hint="Se antepone a los teléfonos locales de los inquilinos (Bolivia: 591)">
+                <input className="input" inputMode="numeric" value={draft.codigoPais ?? ""} onChange={e => set("codigoPais", e.target.value.replace(/\D/g, ""))} style={{ maxWidth: 160 }} />
+              </Field>
               <Field label="Métodos de pago" hint="Separados por coma">
                 <input className="input" value={draft.metodosPago.join(", ")} onChange={e => set("metodosPago", e.target.value.split(",").map(s => s.trim()).filter(Boolean))} />
               </Field>

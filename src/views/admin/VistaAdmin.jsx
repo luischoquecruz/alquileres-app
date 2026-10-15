@@ -58,8 +58,8 @@ export default function VistaAdmin({ cfg, datos, acciones, sesion, cargando, esL
   const comunes = { cfg, acciones, notificar };
   const contenido = {
     "nuevo-pago": () => <PagoNuevo {...comunes} datos={datos} />,
-    historial: () => <Historial {...comunes} pagos={pagos} filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} servicios={servicios} cargando={cargando} esLocal={esLocal} />,
-    informe: () => <InformeFinanciero cfg={cfg} filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} servicios={servicios} />,
+    historial: () => <Historial {...comunes} pagos={pagos} personas={personas} filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} servicios={servicios} cargando={cargando} esLocal={esLocal} />,
+    informe: () => <InformeFinanciero cfg={cfg} notificar={notificar} filtrados={filtrados} filtros={filtros} setFiltros={setFiltros} servicios={servicios} />,
     "resumen-persona": () => <ResumenPersona cfg={cfg} datos={datos} notificar={notificar} />,
     liquidaciones: () => <VistaLiquidaciones {...comunes} personas={personas} liquidaciones={liquidaciones} servicios={servicios} pagos={pagos} tarifas={tarifas} />,
     tarifas: () => <VistaTarifas {...comunes} tarifas={tarifas} servicios={servicios} />,

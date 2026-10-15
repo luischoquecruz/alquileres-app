@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 .vercel
+
+# Configuración personal de Claude Code
+.claude/settings.local.json
