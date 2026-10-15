@@ -1,7 +1,7 @@
 import { SEReparto } from "./lib/calculos.js";
 
 export const GAS_URL_DEFAULT = import.meta.env.VITE_GAS_URL ??
-  "https://script.google.com/macros/s/AKfycbwA3z85PNMjT-x8v3-SaTJ6soSkJxAFTqwIWZAEYi48Q8XmABlpdJf5XlVF9LH8EeFrFg/exec";
+  "https://script.google.com/macros/s/AKfycbzPUJNziMnja5btCMJjv_qiVJDmfD8Dg4IcOusp8rbUPtH_vqXK3INQuNC2E8XikmhszA/exec";
 
 export const SERVICIOS_POR_DEFECTO = [
   { id: "alquiler", label: "Alquiler", icon: "🏠", unit: "", tipo: "fijo", requerido: true, reparto: SEReparto.UNIDAD },
@@ -32,6 +32,8 @@ export const CONFIG_DEFAULT = {
     botonEnviar: "💾 Registrar pago",
     mensajeExito: "✅ ¡Pago registrado correctamente!",
   },
+
+  codigoPais: "591", // se antepone a los teléfonos locales al abrir WhatsApp
 
   mostrarCampoNotas: true,
   requiereNotas: false,

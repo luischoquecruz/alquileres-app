@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
 import { getLiq, pagosDePersonaPeriodo } from "../../lib/calculos.js";
 import { emptyForm, fmtMoney, round1 } from "../../lib/format.js";
-import { Field, Mensaje, PageHeader, PeriodoSelector } from "../../ui.jsx";
+import { BotonWhatsApp, Field, Mensaje, PageHeader, PeriodoSelector } from "../../ui.jsx";
+import { compartirWhatsApp, textoRecibo } from "../../lib/whatsapp.js";
 import BuscadorPersonas from "../../components/BuscadorPersonas.jsx";
 import DetalleMontos from "../../components/DetalleMontos.jsx";
 import { useMontos } from "../../hooks/useMontos.js";
@@ -35,6 +36,12 @@ export default function PagoNuevo({ cfg, datos, acciones, notificar }) {
   const boleta = pago => {
     if (!imprimirBoleta({ cfg, pago, servicios })) notificar("El navegador bloqueó la ventana de impresión. Permita ventanas emergentes.", "error");
   };
+
+  const enviarRecibo = pago => compartirWhatsApp({
+    texto: textoRecibo({ cfg, pago, servicios }),
+    telefono: personas.find(p => String(p.id) === String(pago.personaId))?.telefono,
+    codigoPais: cfg.codigoPais,
+  });
 
   const enviar = async () => {
     if (!liqPeriodo) return setError("No hay liquidación configurada para este período.");
@@ -80,6 +87,7 @@ export default function PagoNuevo({ cfg, datos, acciones, notificar }) {
           <div className="small text-ok" style={{ marginTop: 4, fontWeight: 600 }}>{guardado.inquilino} — Total: Bs.- {fmtMoney(guardado.total)}</div>
           <div className="row" style={{ justifyContent: "center", marginTop: 14 }}>
             <button className="btn btn-primary" onClick={() => boleta(guardado)}>🖨️ Imprimir boleta</button>
+            <BotonWhatsApp onCompartir={() => enviarRecibo(guardado)} notificar={notificar}>Enviar recibo</BotonWhatsApp>
             <button className="btn btn-ghost" onClick={() => setGuardado(null)}>Cerrar</button>
           </div>
         </div>

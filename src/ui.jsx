@@ -53,6 +53,30 @@ export const Modal = ({ children, ancho = 400, onClose }) => (
   </div>
 );
 
+const IconoWhatsApp = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M12.04 2a9.9 9.9 0 0 0-8.5 14.98L2 22l5.16-1.5A9.9 9.9 0 1 0 12.04 2Zm0 18.1a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.06.89.9-2.98-.2-.31a8.2 8.2 0 1 1 6.84 3.73Zm4.5-6.14c-.25-.12-1.46-.72-1.69-.8-.23-.08-.39-.12-.55.12-.16.25-.63.8-.78.97-.14.16-.29.18-.53.06a6.7 6.7 0 0 1-3.32-2.9c-.25-.43.25-.4.71-1.33.08-.16.04-.3-.02-.42l-.75-1.8c-.2-.47-.4-.4-.55-.41h-.47a.9.9 0 0 0-.65.3 2.73 2.73 0 0 0-.85 2.03 4.74 4.74 0 0 0 1 2.52 10.86 10.86 0 0 0 4.16 3.68c1.55.67 2.16.73 2.93.61.47-.07 1.46-.6 1.66-1.18.2-.58.2-1.07.15-1.18-.06-.1-.22-.16-.47-.28Z" />
+  </svg>
+);
+
+// Botón "WhatsApp": `onCompartir` devuelve el resultado de compartirWhatsApp().
+export function BotonWhatsApp({ onCompartir, notificar, children = "WhatsApp", soloIcono = false, className = "", title }) {
+  const click = async () => {
+    try {
+      const r = await onCompartir();
+      if (r === "bloqueado") notificar?.("El navegador bloqueó la ventana de WhatsApp. Permita ventanas emergentes.", "error");
+    } catch (e) {
+      notificar?.("No se pudo compartir: " + e.message, "error");
+    }
+  };
+  return (
+    <button type="button" className={`btn btn-whatsapp ${soloIcono ? "btn-icon" : ""} ${className}`} onClick={click}
+      aria-label={soloIcono ? (title || "Enviar por WhatsApp") : undefined} title={title || "Enviar por WhatsApp"}>
+      <IconoWhatsApp />{!soloIcono && <span>{children}</span>}
+    </button>
+  );
+}
+
 // Mes + año con flechas para moverse rápido, y accesos directos a los períodos que ya tienen datos.
 export function PeriodoSelector({ mes, anio, onChange, periodos = [], etiquetaPeriodos = "Con datos:" }) {
   const mover = delta => {

@@ -37,7 +37,9 @@ const SESION_SEGUNDOS   = 6 * 60 * 60;   // máximo permitido por CacheService
 const MAX_INTENTOS      = 5;
 const BLOQUEO_SEGUNDOS  = 15 * 60;
 const PASSWORD_DEFECTO  = "admin123";
-const HASH_ITERACIONES  = 500;
+// Cada iteración es una llamada a Utilities.computeDigest, lenta en Apps Script.
+// Los hashes guardados llevan su propia cantidad de iteraciones, así que cambiarla no invalida los existentes.
+const HASH_ITERACIONES  = 50;
 
 // ── Entradas ────────────────────────────────────────────────
 
@@ -56,7 +58,7 @@ function doPost(e) {
       case "login":          return jsonResponse(login(body.usuario, body.password));
       case "logout":         if (body.token) CacheService.getScriptCache().remove("ses_" + body.token);
                              return jsonResponse({ ok: true });
-      case "changePassword": return jsonResponse(conLock(() => cambiarPassword(requerirSesion(sesion), body.actual, body.nueva)));
+      case "changePassword": return jsonResponse(cambiarPassword(requerirSesion(sesion), body.actual, body.nueva));
     }
 
     const admin = requerirAdmin(sesion);
@@ -125,40 +127,47 @@ function login(usuario, password) {
   const intentos = Number(cache.get(claveIntentos)) || 0;
   if (intentos >= MAX_INTENTOS) throw errorCodigo("Demasiados intentos. Espere 15 minutos.", "BLOQUEADO");
 
-  return conLock(() => {
-    asegurarAdminInicial();
-    const sheet = asegurarHoja(HOJA_USUARIOS);
-    const usuarios = leerTabla(HOJA_USUARIOS);
-    const idx = usuarios.findIndex(u =>
-      String(u.email || "").trim().toLowerCase() === usuario ||
-      String(u.nombre || "").trim().toLowerCase() === usuario);
-    const u = idx >= 0 ? usuarios[idx] : null;
+  // La verificación (hash costoso) se hace sin el lock global: solo lee la hoja.
+  // El lock se toma únicamente para escribir (admin inicial, migración de contraseña).
+  let usuarios = leerTabla(HOJA_USUARIOS);
+  if (!usuarios.length) usuarios = conLock(() => { asegurarAdminInicial(); return leerTabla(HOJA_USUARIOS); });
 
-    if (!u || !verificarPassword(password, String(u.password))) {
-      cache.put(claveIntentos, String(intentos + 1), BLOQUEO_SEGUNDOS);
-      throw errorCodigo("Credenciales incorrectas", "AUTH");
+  const u = usuarios.find(x =>
+    String(x.email || "").trim().toLowerCase() === usuario ||
+    String(x.nombre || "").trim().toLowerCase() === usuario);
+
+  if (!u || !verificarPassword(password, String(u.password))) {
+    cache.put(claveIntentos, String(intentos + 1), BLOQUEO_SEGUNDOS);
+    throw errorCodigo("Credenciales incorrectas", "AUTH");
+  }
+  cache.remove(claveIntentos);
+
+  // Migrar contraseña en texto plano (o hash con otra cantidad de iteraciones) al formato actual.
+  // Si el servidor está ocupado se reintenta en el próximo login.
+  if (necesitaRehash(String(u.password))) {
+    const hash = hashPassword(password);
+    const lock = LockService.getScriptLock();
+    if (lock.tryLock(5000)) {
+      try { setCampoUsuario(asegurarHoja(HOJA_USUARIOS), u.id, "password", hash); } finally { lock.releaseLock(); }
     }
-    cache.remove(claveIntentos);
+  }
 
-    // Migrar contraseña en texto plano a hash
-    if (!esHash(String(u.password))) setCampoUsuario(sheet, u.id, "password", hashPassword(password));
-
-    const sesion = { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol === "admin" ? "admin" : "inquilino", personaId: u.personaId || null };
-    const token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
-    cache.put("ses_" + token, JSON.stringify(sesion), SESION_SEGUNDOS);
-    return { ok: true, token: token, sesion: sesionPublica(sesion), debeCambiarPassword: password === PASSWORD_DEFECTO };
-  });
+  const sesion = { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol === "admin" ? "admin" : "inquilino", personaId: u.personaId || null };
+  const token = Utilities.getUuid().replace(/-/g, "") + Utilities.getUuid().replace(/-/g, "");
+  cache.put("ses_" + token, JSON.stringify(sesion), SESION_SEGUNDOS);
+  return { ok: true, token: token, sesion: sesionPublica(sesion), debeCambiarPassword: password === PASSWORD_DEFECTO };
 }
 
 function cambiarPassword(sesion, actual, nueva) {
   nueva = String(nueva || "");
   if (nueva.length < 6) throw errorCodigo("La nueva contraseña debe tener al menos 6 caracteres", "VALIDACION");
-  const sheet = asegurarHoja(HOJA_USUARIOS);
   const usuarios = leerTabla(HOJA_USUARIOS);
   const idx = usuarios.findIndex(u => String(u.id) === String(sesion.id));
   if (idx < 0) throw errorCodigo("Usuario no encontrado", "AUTH");
   if (!verificarPassword(String(actual || ""), String(usuarios[idx].password))) throw errorCodigo("La contraseña actual no es correcta", "AUTH");
-  setCampoUsuario(sheet, sesion.id, "password", hashPassword(nueva));
+  // Hash calculado fuera del lock; el lock solo cubre la escritura
+  const hash = hashPassword(nueva);
+  conLock(() => setCampoUsuario(asegurarHoja(HOJA_USUARIOS), sesion.id, "password", hash));
   return { ok: true };
 }
 
@@ -199,6 +208,7 @@ function asegurarAdminInicial() {
 // ── Contraseñas ─────────────────────────────────────────────
 
 function esHash(s) { return s.indexOf("sha256$") === 0; }
+function necesitaRehash(s) { return !esHash(s) || Number(s.split("$")[1]) !== HASH_ITERACIONES; }
 
 function hashPassword(password, salt, iteraciones) {
   salt = salt || Utilities.getUuid().replace(/-/g, "");

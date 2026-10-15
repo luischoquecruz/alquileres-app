@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { estadoCuenta } from "../../lib/calculos.js";
 import { fmtMoney } from "../../lib/format.js";
-import { PageHeader, Vacio } from "../../ui.jsx";
+import { BotonWhatsApp, PageHeader, Vacio } from "../../ui.jsx";
+import { compartirWhatsApp, textoEstadoCuenta } from "../../lib/whatsapp.js";
 import { imprimirResumenPersonas } from "../../print/reportes.js";
 
 const claseSaldo = n => (n > 0 ? "text-danger" : "text-ok");
@@ -17,6 +18,12 @@ export default function ResumenPersona({ cfg, datos, notificar }) {
     .filter(f => f.periodos.length > 0), [activas, liquidaciones, servicios, pagos]);
   const visibles = soloDeuda ? filas.filter(f => f.saldoTotal > 0) : filas;
   const deudaTotal = filas.reduce((s, f) => s + Math.max(0, f.saldoTotal), 0);
+
+  const enviarEstado = data => compartirWhatsApp({
+    texto: textoEstadoCuenta({ cfg, nombre: data.nombre, periodos: data.periodos, servicios }),
+    telefono: personas.find(p => String(p.id) === String(data.id))?.telefono,
+    codigoPais: cfg.codigoPais,
+  });
 
   const imprimir = () => {
     if (!imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquidaciones })) {
@@ -66,6 +73,9 @@ export default function ResumenPersona({ cfg, datos, notificar }) {
                   </button>
                   {exp && (
                     <div style={{ padding: "0 14px 14px" }}>
+                      <div className="row" style={{ marginBottom: 10 }}>
+                        <BotonWhatsApp className="btn-sm" onCompartir={() => enviarEstado(data)} notificar={notificar}>Enviar estado de cuenta</BotonWhatsApp>
+                      </div>
                       <div className="table-wrap table-stack">
                         <table className="table">
                           <thead>

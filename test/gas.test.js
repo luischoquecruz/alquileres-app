@@ -117,6 +117,19 @@ describe("Code.gs", () => {
     expect(env.llamar({ action: "login", usuario: "admin", password: "vieja123" }).ok).toBe(true);
   });
 
+  it("acepta hashes antiguos de 500 iteraciones y los migra al formato actual", () => {
+    let h = "sal:clave123";
+    for (let i = 0; i < 500; i++) h = createHash("sha256").update(h + "clave123", "utf8").digest("hex");
+    const sheet = env.crearHoja();
+    env.hojas.Usuarios = sheet;
+    sheet.appendRow(["id", "nombre", "email", "password", "rol", "personaId"]);
+    sheet.appendRow([1, "Administrador", "admin", `sha256$500$sal$${h}`, "admin", ""]);
+    expect(env.llamar({ action: "login", usuario: "admin", password: "clave123" }).ok).toBe(true);
+    expect(sheet._celdas()[1][3]).toMatch(/^sha256\$50\$/);
+    expect(env.llamar({ action: "login", usuario: "admin", password: "clave123" }).ok).toBe(true);
+    expect(env.llamar({ action: "login", usuario: "admin", password: "otra" }).ok).toBe(false);
+  });
+
   it("bloquea tras 5 intentos fallidos", () => {
     loginAdmin();
     for (let i = 0; i < 5; i++) env.llamar({ action: "login", usuario: "admin", password: "x" });
