@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { inp } from "../estilos.js";
-import { Modal, Label } from "../ui.jsx";
+import { Modal, Field, Mensaje } from "../ui.jsx";
 
-export default function LoginModal({ onLogin, onClose, cfg }) {
+export default function LoginModal({ onLogin, onClose }) {
   const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
+  const [verPass, setVerPass] = useState(false);
   const [error, setError] = useState("");
   const [enviando, setEnviando] = useState(false);
 
@@ -19,22 +19,29 @@ export default function LoginModal({ onLogin, onClose, cfg }) {
   };
 
   return (
-    <Modal>
-      <form onSubmit={enviar} style={{ padding: 24 }}>
-        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text-main)", marginBottom: 16, textAlign: "center" }}>🔐 Iniciar sesión</div>
-        {error && <div role="alert" style={{ background: "var(--bg-error)", border: "1px solid var(--danger-text)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, color: "var(--danger-text)", fontSize: 12, textAlign: "center" }}>{error}</div>}
-        <div style={{ marginBottom: 12 }}>
-          <Label size={12}>Usuario / Email</Label>
-          <input autoFocus autoComplete="username" value={usuario} onChange={e => setUsuario(e.target.value)} style={{ ...inp, padding: "9px 12px" }} />
+    <Modal onClose={onClose}>
+      <form onSubmit={enviar} className="modal-body stack">
+        <div>
+          <div style={{ fontSize: 34, textAlign: "center" }} aria-hidden="true">🔐</div>
+          <h2 className="modal-title">Iniciar sesión</h2>
+          <p className="small muted" style={{ textAlign: "center" }}>Ingrese con su usuario y contraseña</p>
         </div>
-        <div style={{ marginBottom: 16 }}>
-          <Label size={12}>Contraseña</Label>
-          <input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} style={{ ...inp, padding: "9px 12px" }} placeholder="••••••" />
+        <Mensaje tipo="error">{error}</Mensaje>
+        <Field label="Usuario / Email">
+          <input className="input" autoFocus autoComplete="username" autoCapitalize="none" spellCheck={false} value={usuario} onChange={e => setUsuario(e.target.value)} />
+        </Field>
+        <Field as="div" label="Contraseña">
+          <div className="input-group">
+            <input className="input" type={verPass ? "text" : "password"} autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••" aria-label="Contraseña" />
+            <button type="button" className="addon" style={{ cursor: "pointer" }} onClick={() => setVerPass(v => !v)} aria-label={verPass ? "Ocultar contraseña" : "Mostrar contraseña"}>{verPass ? "🙈" : "👁️"}</button>
+          </div>
+        </Field>
+        <div className="stack-sm">
+          <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={enviando || !usuario || !password}>
+            {enviando ? "Verificando…" : "Ingresar"}
+          </button>
+          <button type="button" className="btn btn-ghost btn-block" onClick={onClose}>Cancelar</button>
         </div>
-        <button type="submit" disabled={enviando || !usuario || !password} style={{ width: "100%", background: cfg.colorPrimario, color: "#fff", border: "none", borderRadius: 8, padding: 11, fontWeight: 700, cursor: enviando ? "wait" : "pointer", fontSize: 14, marginBottom: 8, opacity: !usuario || !password ? .6 : 1 }}>
-          {enviando ? "Verificando..." : "Ingresar"}
-        </button>
-        <button type="button" onClick={onClose} style={{ width: "100%", background: "transparent", color: "var(--text-secondary)", border: "1px solid var(--border)", borderRadius: 8, padding: 11, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Cancelar</button>
       </form>
     </Modal>
   );

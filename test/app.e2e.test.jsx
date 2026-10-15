@@ -15,6 +15,7 @@ beforeEach(async () => {
   vi.resetModules();
   window.confirm = () => true;
   window.open = vi.fn(() => null); // ventana de impresión bloqueada
+  window.scrollTo = () => {}; // jsdom no lo implementa
   App = (await import("../src/App.jsx")).default;
 });
 afterEach(() => { cleanup(); window.location.hash = ""; });

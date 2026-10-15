@@ -35,6 +35,14 @@ export default function App() {
 
   useEffect(() => { document.title = datos.config.appTitulo; }, [datos.config.appTitulo]);
 
+  // Los colores configurables se exponen como variables CSS para todo el sistema de diseño
+  useEffect(() => {
+    const root = document.documentElement.style;
+    if (cfg.colorPrimario) root.setProperty("--primary", cfg.colorPrimario);
+    if (cfg.colorAcento) root.setProperty("--accent", cfg.colorAcento);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", cfg.colorPrimario || "#065f46");
+  }, [cfg.colorPrimario, cfg.colorAcento]);
+
   const toggleDarkMode = () => setDarkMode(d => !d);
 
   const handleLogin = async (usuario, password) => {

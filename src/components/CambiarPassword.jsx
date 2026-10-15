@@ -1,8 +1,7 @@
 import { useState } from "react";
-import { inp, btnPrimario, btnSecundario } from "../estilos.js";
-import { Modal, Label, Mensaje } from "../ui.jsx";
+import { Modal, Field, Mensaje } from "../ui.jsx";
 
-export default function CambiarPassword({ cfg, obligatorio, onGuardar, onClose }) {
+export default function CambiarPassword({ obligatorio, onGuardar, onClose }) {
   const [actual, setActual] = useState(obligatorio ? "admin123" : "");
   const [nueva, setNueva] = useState("");
   const [repetir, setRepetir] = useState("");
@@ -21,22 +20,28 @@ export default function CambiarPassword({ cfg, obligatorio, onGuardar, onClose }
   };
 
   return (
-    <Modal>
-      <form onSubmit={enviar} style={{ padding: 24 }}>
-        <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text-main)", marginBottom: 8, textAlign: "center" }}>🔑 Cambiar contraseña</div>
-        {obligatorio && <Mensaje tipo="error">Está usando la contraseña por defecto. Cámbiela para proteger el sistema.</Mensaje>}
+    <Modal onClose={obligatorio ? undefined : onClose}>
+      <form onSubmit={enviar} className="modal-body stack">
+        <div>
+          <div style={{ fontSize: 34, textAlign: "center" }} aria-hidden="true">🔑</div>
+          <h2 className="modal-title">Cambiar contraseña</h2>
+        </div>
+        {obligatorio && <Mensaje tipo="warn">Está usando la contraseña por defecto. Cámbiela para proteger el sistema.</Mensaje>}
         <Mensaje tipo="error">{error}</Mensaje>
         {!obligatorio && (
-          <div style={{ marginBottom: 12 }}><Label>Contraseña actual</Label>
-            <input type="password" autoComplete="current-password" value={actual} onChange={e => setActual(e.target.value)} style={inp} /></div>
+          <Field label="Contraseña actual">
+            <input className="input" type="password" autoComplete="current-password" value={actual} onChange={e => setActual(e.target.value)} />
+          </Field>
         )}
-        <div style={{ marginBottom: 12 }}><Label>Nueva contraseña</Label>
-          <input type="password" autoComplete="new-password" autoFocus value={nueva} onChange={e => setNueva(e.target.value)} style={inp} /></div>
-        <div style={{ marginBottom: 16 }}><Label>Repetir nueva contraseña</Label>
-          <input type="password" autoComplete="new-password" value={repetir} onChange={e => setRepetir(e.target.value)} style={inp} /></div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="submit" disabled={enviando} style={{ ...btnPrimario(cfg), flex: 1, padding: 10 }}>{enviando ? "Guardando..." : "Guardar"}</button>
-          <button type="button" onClick={onClose} style={{ ...btnSecundario, flex: 1, padding: 10 }}>{obligatorio ? "Más tarde" : "Cancelar"}</button>
+        <Field label="Nueva contraseña" hint="Mínimo 6 caracteres">
+          <input className="input" type="password" autoComplete="new-password" autoFocus value={nueva} onChange={e => setNueva(e.target.value)} />
+        </Field>
+        <Field label="Repetir nueva contraseña">
+          <input className="input" type="password" autoComplete="new-password" value={repetir} onChange={e => setRepetir(e.target.value)} />
+        </Field>
+        <div className="form-grid-2">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>{obligatorio ? "Más tarde" : "Cancelar"}</button>
+          <button type="submit" className="btn btn-primary" disabled={enviando}>{enviando ? "Guardando…" : "Guardar"}</button>
         </div>
       </form>
     </Modal>
