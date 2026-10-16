@@ -137,3 +137,22 @@ export const textoInformeFinanciero = ({ cfg, filtros, total, cantidad, porServi
   "",
   firma(cfg),
 );
+
+// Resumen por persona: `filas` como las arma ResumenPersona (nombre, periodos, saldoTotal…).
+export const textoResumenPersonas = ({ cfg, filas, soloDeuda = false }) => {
+  const deuda = filas.reduce((s, f) => s + Math.max(0, f.saldoTotal), 0);
+  return lineas(
+    `👥 *Resumen por persona${soloDeuda ? " — solo deudas" : ""}*`,
+    "",
+    filas.map(f => {
+      const pendientes = f.periodos.filter(p => p.saldo > 0);
+      return f.saldoTotal > 0
+        ? `• ${f.nombre}: *${bs(f.saldoTotal)}*${pendientes.length ? ` (${pendientes.map(p => p.label).join(", ")})` : ""}`
+        : `• ${f.nombre}: ✅ Al día`;
+    }),
+    "",
+    `*Deuda total: ${bs(deuda)}* · ${filas.filter(f => f.saldoTotal > 0).length} con deuda de ${filas.length}`,
+    "",
+    firma(cfg),
+  );
+};

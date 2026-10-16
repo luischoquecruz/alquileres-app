@@ -169,7 +169,7 @@ export function imprimirDeuda({ cfg, persona, periodos, servicios, tarifas }) {
   return abrirImpresion(`Deuda acumulada — ${persona.nombre}`, documento(cfg, { titulo: "Estado de deuda", sub, contenido }), { cfg });
 }
 
-export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquidaciones }) {
+export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquidaciones, soloDeuda = false }) {
   const deuda = filas.reduce((s, f) => s + Math.max(0, f.saldoTotal), 0);
   const cobrado = filas.reduce((s, f) => s + f.totalPagado, 0);
   const personasHtml = filas.map(f => `<div class="box">
@@ -178,10 +178,14 @@ export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquid
         <span>Saldo ${f.saldoTotal > 0 ? `<b class="saldo">${bs(f.saldoTotal)}</b>` : `<span class="pill ok">Al día</span>`}</span></div></div>
       ${tablaEstadoCuenta(f.periodos, servicios)}
     </div>`).join("");
-  const contenido = `<div class="kpis">${kpi("Inquilinos", filas.length)}${kpi("Con deuda", filas.filter(f => f.saldoTotal > 0).length, "bad")}${kpi("Cobrado", bs(cobrado), "ok")}${kpi("Deuda total", bs(deuda), "hl")}</div>
-    <h3>Estado de cuenta por inquilino</h3>${personasHtml}
-    ${tarjetaFacturas(Object.keys(liquidaciones).sort(), tarifas, servicios)}`;
-  return abrirImpresion("Resumen por Persona", documento(cfg, { titulo: "Resumen por persona", sub: `${filas.length} inquilino(s) · ${Object.keys(liquidaciones).length} período(s) liquidados`, contenido }), { cfg });
+  // Con soloDeuda, `filas` ya trae solo los meses con saldo pendiente.
+  const claves = soloDeuda ? [...new Set(filas.flatMap(f => f.periodos.map(p => p.key)))].sort() : Object.keys(liquidaciones).sort();
+  const meses = filas.reduce((s, f) => s + f.periodos.length, 0);
+  const contenido = `<div class="kpis">${kpi("Inquilinos", filas.length)}${kpi("Con deuda", filas.filter(f => f.saldoTotal > 0).length, "bad")}${soloDeuda ? kpi("Meses adeudados", meses, "bad") : kpi("Cobrado", bs(cobrado), "ok")}${kpi("Deuda total", bs(deuda), "hl")}</div>
+    <h3>${soloDeuda ? "Meses con saldo pendiente por inquilino" : "Estado de cuenta por inquilino"}</h3>${personasHtml}
+    ${tarjetaFacturas(claves, tarifas, servicios)}`;
+  const sub = soloDeuda ? `Solo deudas · ${filas.length} inquilino(s) · ${meses} mes(es) adeudado(s)` : `${filas.length} inquilino(s) · ${Object.keys(liquidaciones).length} período(s) liquidados`;
+  return abrirImpresion("Resumen por Persona", documento(cfg, { titulo: soloDeuda ? "Resumen de deudas por persona" : "Resumen por persona", sub, contenido }), { cfg });
 }
 
 const lineasMontos = (pago, servicios) => servicios
