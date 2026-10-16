@@ -121,9 +121,8 @@ const documento = (cfg, { titulo, sub, meta, contenido }) =>
   `<div class="page">${banda(cfg, titulo, sub, meta)}<div class="doc">${contenido}${pie(cfg)}</div></div>`;
 
 // `m` formatea los montos: con prefijo "Bs.-" por defecto, o solo el número en reportes compactos.
-// Sin `conServicios` solo muestra Debe/Pagó/Saldo (el desglose va aparte).
-const tablaEstadoCuenta = (periodos, servicios, m = bs, conServicios = true) => {
-  const usados = conServicios ? servicios.filter(s => periodos.some(p => p.detalles[s.id] > 0)) : [];
+const tablaEstadoCuenta = (periodos, servicios, m = bs) => {
+  const usados = servicios.filter(s => periodos.some(p => p.detalles[s.id] > 0));
   return `<table><thead><tr><th>Período</th>${usados.map(s => `<th class="n">${esc(s.icon)} ${esc(s.label)}</th>`).join("")}<th class="n">Debe</th><th class="n">Pagó</th><th class="n">Saldo</th></tr></thead>
   <tbody>${periodos.map(p => `<tr><td><b>${esc(p.label)}</b></td>
     ${usados.map(s => `<td class="n">${p.detalles[s.id] > 0 ? m(p.detalles[s.id]) : "—"}</td>`).join("")}
@@ -182,10 +181,11 @@ const calculoLiquidacion = (clave, liq, servicios, personas, tarifas) => {
     const total = Number(srv[s.id].totalFactura);
     const tf = totalFactorServicio(s, liq, gente);
     const consumo = Number(tarifas?.[clave]?.[s.id + "_consumo"]) || 0;
+    const [uno, varios] = reparto === SEReparto.HABITACIONES ? ["habitación", "habitaciones"] : ["persona", "personas"];
     const calc = reparto === SEReparto.UNIDAD || !tf
-      ? `${fmtMoney(total)} c/u`
-      : `${fmtMoney(total)} ÷ ${fmtNum(tf)} ${unidad(reparto)} = <b>${fmtPrecio(total / tf)}/${unidad(reparto)}</b>`;
-    return `<li><span>${esc(s.icon)} ${esc(s.label)}${consumo ? ` <i>(${fmtNum(consumo)} ${esc(s.unit)})</i>` : ""}</span><span class="num">${calc}</span></li>`;
+      ? `monto fijo: cada inquilino paga <b>${fmtMoney(total)}</b>`
+      : `factura de ${fmtMoney(total)} ÷ ${fmtNum(tf)} ${varios} en total = <b>${fmtPrecio(total / tf)} por ${uno}</b>`;
+    return `<li><span class="sv">${esc(s.icon)} ${esc(s.label)}${consumo ? ` <i>(${fmtNum(consumo)} ${esc(s.unit)})</i>` : ""}</span><span>${calc}</span></li>`;
   }).join("");
   const sumas = lineas.map(() => 0);
   const filas = gente.map(p => {
@@ -196,11 +196,11 @@ const calculoLiquidacion = (clave, liq, servicios, personas, tarifas) => {
     return `<tr><td>${esc(p.nombre) || "—"}</td>${celdas.map((d, i) => {
       if (d.monto <= 0) return `<td class="n">—</td>`;
       const reparto = srv[lineas[i].id].reparto || lineas[i].reparto;
-      return `<td class="n">${reparto === SEReparto.UNIDAD ? "" : `<i>${fmtNum(d.factor)}×</i> `}${fmtMoney(d.monto)}</td>`;
+      return `<td class="n">${reparto === SEReparto.UNIDAD ? "" : `<i>${fmtNum(d.factor)} ${unidad(reparto)} × ${fmtPrecio(d.precio)} =</i> `}${fmtMoney(d.monto)}</td>`;
     }).join("")}<td class="n"><b>${fmtMoney(total)}</b></td></tr>`;
   }).join("");
   return `<div class="liq"><div class="liq-h">${esc(periodoDeKey(clave).label)}</div>
-    <ul class="liq-f">${formulas}</ul>
+    <ul class="liq-f"><li class="paso">1. Precio de cada servicio</li>${formulas}<li class="paso">2. Lo que paga cada inquilino = su cantidad × el precio</li></ul>
     <table><thead><tr><th>Inquilino</th>${lineas.map(s => `<th class="n">${esc(s.icon)} ${esc(s.label)}</th>`).join("")}<th class="n">Total</th></tr></thead><tbody>${filas}</tbody>
     <tfoot><tr><td>Total</td>${sumas.map(t => `<td class="n">${fmtMoney(t)}</td>`).join("")}<td class="n">${fmtMoney(sumas.reduce((a, b) => a + b, 0))}</td></tr></tfoot></table></div>`;
 };
@@ -220,9 +220,16 @@ const cssCompacto = `
   .cols td:first-child { white-space:nowrap; }
   .liq { border:1px solid var(--bd); border-radius:6px; overflow:hidden; break-inside:avoid; page-break-inside:avoid; }
   .liq-h { background:var(--p); color:#fff; font-weight:800; font-size:10.5px; padding:3px 8px; }
-  .liq-f { list-style:none; padding:3px 8px; background:var(--bg); border-bottom:1px solid var(--bd); font-size:9.5px;
-    display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:1px 20px; }
-  .liq-f li { display:flex; justify-content:space-between; gap:8px; }
+  .liq-f { list-style:none; padding:4px 8px; background:var(--bg); border-bottom:1px solid var(--bd); font-size:9.5px; }
+  .liq-f li { display:flex; gap:8px; padding:1px 0 1px 12px; }
+  .liq-f li.paso { padding-left:0; color:var(--p); font-weight:600; } .liq-f li.paso:not(:first-child) { margin-top:3px; }
+  .liq-f .sv { min-width:150px; }
+  .liq-calc-nota { font-size:9px; color:var(--mu); margin:-2px 0 5px; }
+  /* Tarjetas de inquilinos: cada una con su color */
+  .cols .box { border-left:4px solid var(--c); }
+  .cols .box-h { background:color-mix(in srgb, var(--c) 10%, #fff); } .cols .box-h .t { color:var(--c); }
+  .cols thead th { border-bottom-color:var(--c); }
+  .cols tfoot td { border-top:0; background:color-mix(in srgb, var(--c) 14%, #fff); color:var(--c); font-size:11px; padding:4px 5px; }
   .liq i, .liq-f i { color:var(--mu); font-style:normal; font-size:8.5px; }
   .foot { margin-top:10px; padding-top:5px; font-size:8.5px; }
   /* Menos negrita: solo se resaltan los totales y saldos */
@@ -234,9 +241,11 @@ const cssCompacto = `
 export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquidaciones, personas, soloDeuda = false }) {
   const deuda = filas.reduce((s, f) => s + Math.max(0, f.saldoTotal), 0);
   const cobrado = filas.reduce((s, f) => s + f.totalPagado, 0);
-  const personasHtml = filas.map(f => `<div class="box">
+  const personasHtml = filas.map((f, i) => `<div class="box" style="--c:${COLORES[i % COLORES.length]}">
       <div class="box-h"><div><div class="t">${esc(f.nombre)}</div>${f.inmueble ? `<div class="s">${esc(f.inmueble)}</div>` : ""}</div></div>
-      ${tablaEstadoCuenta(f.periodos, servicios, fmtMoney, false)}
+      <table><thead><tr><th>Período</th><th class="n">Debe</th></tr></thead>
+        <tbody>${f.periodos.map(p => `<tr><td>${esc(p.label)}</td><td class="n">${fmtMoney(p.debe)}</td></tr>`).join("")}</tbody>
+        <tfoot><tr><td>Total</td><td class="n">${fmtMoney(f.totalDebe)}</td></tr></tfoot></table>
     </div>`).join("");
   // Con soloDeuda, `filas` ya trae solo los meses con saldo pendiente.
   const claves = soloDeuda ? [...new Set(filas.flatMap(f => f.periodos.map(p => p.key)))].sort() : Object.keys(liquidaciones).sort();
@@ -245,7 +254,8 @@ export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquid
   const calculos = claves.map(k => calculoLiquidacion(k, liquidaciones[k], servicios, personas, tarifas)).join("");
   const contenido = `<div class="kpis">${kpi("Inquilinos", filas.length)}${kpi("Con deuda", filas.filter(f => f.saldoTotal > 0).length, "bad")}${soloDeuda ? kpi("Meses adeudados", meses, "bad") : kpi("Cobrado", bs(cobrado), "ok")}${kpi("Deuda total", bs(deuda), "hl")}</div>
     <h3>${soloDeuda ? "Meses con saldo pendiente por inquilino" : "Estado de cuenta por inquilino"} (Bs.-)</h3><div class="cols">${personasHtml}</div>
-    ${calculos ? `<h3>Cálculo de la liquidación por mes (Bs.-)</h3><div class="liqs">${calculos}</div>` : ""}`;
+    ${calculos ? `<h3>Cálculo de la liquidación por mes (Bs.-)</h3>
+      <p class="liq-calc-nota">Cada factura se divide entre el total de habitaciones o personas del inmueble. Cada inquilino paga su cantidad por ese precio (redondeado a 1 decimal).</p><div class="liqs">${calculos}</div>` : ""}`;
   const sub = soloDeuda ? `Solo deudas · ${filas.length} inquilino(s) · ${meses} mes(es) adeudado(s)` : `${filas.length} inquilino(s) · ${Object.keys(liquidaciones).length} período(s) liquidados`;
   return abrirImpresion("Resumen por Persona", documento(cfg, { titulo: soloDeuda ? "Resumen de deudas por persona" : "Resumen por persona", sub, contenido }), { css: cssBase(cfg) + cssCompacto });
 }
