@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { numeroWhatsApp, enlaceWhatsApp, textoCobroLiquidacion, textoEstadoCuenta, textoInformeFinanciero } from "./whatsapp.js";
+import { numeroWhatsApp, enlaceWhatsApp, textoCobroLiquidacion, textoEstadoCuenta, textoInformeFinanciero, textoResumenPersonas } from "./whatsapp.js";
 
 const cfg = { orgNombre: "EGI", orgSubtitulo: "Alquileres" };
 const agua = { id: "agua", label: "Agua", icon: "💧" };
@@ -41,5 +41,16 @@ describe("mensajes", () => {
   it("no deja arreglos anidados sin aplanar", () => {
     const t = textoInformeFinanciero({ cfg, total: 30, cantidad: 2, porServicio: [{ s: agua, monto: 30 }], porInquilino: [{ inquilino: "Ana", total: 20 }, { inquilino: "Beto", total: 10 }] });
     expect(t).toContain("• Ana: Bs.- 20,0\n• Beto: Bs.- 10,0");
+  });
+  it("resumen por persona lista deudas con sus meses y a quienes están al día", () => {
+    const filas = [
+      { nombre: "Ana", saldoTotal: 12, periodos: [{ label: "Sep 2026", saldo: 0 }, { label: "Oct 2026", saldo: 12 }] },
+      { nombre: "Beto", saldoTotal: 0, periodos: [{ label: "Oct 2026", saldo: 0 }] },
+    ];
+    const t = textoResumenPersonas({ cfg, filas, soloDeuda: true });
+    expect(t).toContain("solo deudas");
+    expect(t).toContain("• Ana: *Bs.- 12,0* (Oct 2026)");
+    expect(t).toContain("• Beto: ✅ Al día");
+    expect(t).toContain("*Deuda total: Bs.- 12,0* · 1 con deuda de 2");
   });
 });

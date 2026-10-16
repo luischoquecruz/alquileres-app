@@ -2,10 +2,19 @@ import { useMemo, useState } from "react";
 import { estadoCuenta } from "../../lib/calculos.js";
 import { fmtMoney } from "../../lib/format.js";
 import { BotonWhatsApp, PageHeader, Vacio } from "../../ui.jsx";
-import { compartirWhatsApp, textoEstadoCuenta } from "../../lib/whatsapp.js";
+import { compartirWhatsApp, textoEstadoCuenta, textoResumenPersonas } from "../../lib/whatsapp.js";
 import { imprimirResumenPersonas } from "../../print/reportes.js";
 
 const claseSaldo = n => (n > 0 ? "text-danger" : "text-ok");
+const round1 = n => Math.round(n * 10) / 10;
+
+// Deja solo los meses con saldo pendiente y recalcula los totales sobre ellos.
+const soloMesesConDeuda = f => {
+  const periodos = f.periodos.filter(p => p.saldo > 0);
+  const totalDebe = round1(periodos.reduce((s, p) => s + p.debe, 0));
+  const totalPagado = round1(periodos.reduce((s, p) => s + p.pagado, 0));
+  return { ...f, periodos, totalDebe, totalPagado, saldoTotal: round1(totalDebe - totalPagado) };
+};
 
 export default function ResumenPersona({ cfg, datos, notificar }) {
   const { personas, servicios, liquidaciones, tarifas, pagos } = datos;
@@ -16,17 +25,19 @@ export default function ResumenPersona({ cfg, datos, notificar }) {
   const filas = useMemo(() => activas
     .map(p => ({ id: p.id, nombre: p.nombre, inmueble: p.inmueble, ...estadoCuenta(p, liquidaciones, servicios, activas, pagos) }))
     .filter(f => f.periodos.length > 0), [activas, liquidaciones, servicios, pagos]);
-  const visibles = soloDeuda ? filas.filter(f => f.saldoTotal > 0) : filas;
+  const visibles = useMemo(() => (soloDeuda ? filas.map(soloMesesConDeuda).filter(f => f.periodos.length > 0) : filas), [filas, soloDeuda]);
   const deudaTotal = filas.reduce((s, f) => s + Math.max(0, f.saldoTotal), 0);
 
   const enviarEstado = data => compartirWhatsApp({
-    texto: textoEstadoCuenta({ cfg, nombre: data.nombre, periodos: data.periodos, servicios }),
+    texto: textoEstadoCuenta({ cfg, nombre: data.nombre, periodos: data.periodos, servicios, soloDeuda }),
     telefono: personas.find(p => String(p.id) === String(data.id))?.telefono,
     codigoPais: cfg.codigoPais,
   });
 
+  const compartirResumen = () => compartirWhatsApp({ texto: textoResumenPersonas({ cfg, filas: visibles, soloDeuda }), codigoPais: cfg.codigoPais });
+
   const imprimir = () => {
-    if (!imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquidaciones })) {
+    if (!imprimirResumenPersonas({ cfg, filas: visibles, servicios, tarifas, liquidaciones, soloDeuda })) {
       notificar("El navegador bloqueó la ventana de impresión. Permita ventanas emergentes.", "error");
     }
   };
@@ -34,7 +45,8 @@ export default function ResumenPersona({ cfg, datos, notificar }) {
   return (
     <div className="stack" style={{ gap: 20 }}>
       <PageHeader title="Resumen por persona" sub="Estado de cuenta de cada inquilino según las liquidaciones.">
-        <button className="btn btn-secondary" onClick={imprimir} disabled={!filas.length}>🖨️ Imprimir</button>
+        {visibles.length > 0 && <BotonWhatsApp onCompartir={compartirResumen} notificar={notificar} title="Compartir el resumen por WhatsApp">Compartir</BotonWhatsApp>}
+        <button className="btn btn-secondary" onClick={imprimir} disabled={!visibles.length}>🖨️ Imprimir</button>
       </PageHeader>
 
       {filas.length > 0 && (
@@ -47,7 +59,7 @@ export default function ResumenPersona({ cfg, datos, notificar }) {
 
       {filas.length > 0 && (
         <label className="check" style={{ minHeight: 0 }}>
-          <input type="checkbox" checked={soloDeuda} onChange={e => setSoloDeuda(e.target.checked)} /> Mostrar solo quienes tienen saldo pendiente
+          <input type="checkbox" checked={soloDeuda} onChange={e => setSoloDeuda(e.target.checked)} /> Mostrar solo deudas (meses con saldo pendiente)
         </label>
       )}
 
@@ -63,7 +75,7 @@ export default function ResumenPersona({ cfg, datos, notificar }) {
                     <div className="avatar" aria-hidden="true">{String(data.nombre || "?").charAt(0).toUpperCase()}</div>
                     <div className="grow">
                       <div className="item-title">{data.nombre}</div>
-                      <div className="item-meta">{data.inmueble ? `${data.inmueble} · ` : ""}{data.periodos.length} período(s)</div>
+                      <div className="item-meta">{data.inmueble ? `${data.inmueble} · ` : ""}{data.periodos.length} {soloDeuda ? "mes(es) adeudado(s)" : "período(s)"}</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
                       <div className={`strong num ${claseSaldo(data.saldoTotal)}`}>{data.saldoTotal > 0 ? `Bs.- ${fmtMoney(data.saldoTotal)}` : "Al día ✅"}</div>
