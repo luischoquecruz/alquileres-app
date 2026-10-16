@@ -37,7 +37,7 @@ export default function ResumenPersona({ cfg, datos, notificar }) {
   const compartirResumen = () => compartirWhatsApp({ texto: textoResumenPersonas({ cfg, filas: visibles, soloDeuda }), codigoPais: cfg.codigoPais });
 
   const imprimir = () => {
-    if (!imprimirResumenPersonas({ cfg, filas: visibles, servicios, tarifas, liquidaciones, soloDeuda })) {
+    if (!imprimirResumenPersonas({ cfg, filas: visibles, servicios, tarifas, liquidaciones, personas, soloDeuda })) {
       notificar("El navegador bloqueó la ventana de impresión. Permita ventanas emergentes.", "error");
     }
   };

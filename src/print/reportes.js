@@ -1,6 +1,6 @@
 // Documentos imprimibles (se abren en una ventana nueva). Todo texto de usuario pasa por esc().
 import { esc, fmtMoney, fmtDate, fmtNum, fmtPrecio, periodoDeKey } from "../lib/format.js";
-import { SEReparto, serviciosDeLiq, totalesPorPersona, totalFactorServicio, montoPagado, personasDeLiquidacion } from "../lib/calculos.js";
+import { SEReparto, serviciosDeLiq, totalesPorPersona, totalFactorServicio, montoPagado, personasDeLiquidacion, detalleServicio } from "../lib/calculos.js";
 
 // Solo colores hex: el valor viene de la configuración y se interpola en CSS.
 const color = (c, def) => (/^#[0-9a-f]{3,8}$/i.test(String(c || "")) ? c : def);
@@ -120,18 +120,20 @@ ${cuerpo}</body></html>`);
 const documento = (cfg, { titulo, sub, meta, contenido }) =>
   `<div class="page">${banda(cfg, titulo, sub, meta)}<div class="doc">${contenido}${pie(cfg)}</div></div>`;
 
-const tablaEstadoCuenta = (periodos, servicios, conTotales = true) => {
-  const usados = servicios.filter(s => periodos.some(p => p.detalles[s.id] > 0));
+// `m` formatea los montos: con prefijo "Bs.-" por defecto, o solo el número en reportes compactos.
+// Sin `conServicios` solo muestra Debe/Pagó/Saldo (el desglose va aparte).
+const tablaEstadoCuenta = (periodos, servicios, m = bs, conServicios = true) => {
+  const usados = conServicios ? servicios.filter(s => periodos.some(p => p.detalles[s.id] > 0)) : [];
   return `<table><thead><tr><th>Período</th>${usados.map(s => `<th class="n">${esc(s.icon)} ${esc(s.label)}</th>`).join("")}<th class="n">Debe</th><th class="n">Pagó</th><th class="n">Saldo</th></tr></thead>
   <tbody>${periodos.map(p => `<tr><td><b>${esc(p.label)}</b></td>
-    ${usados.map(s => `<td class="n">${p.detalles[s.id] > 0 ? bs(p.detalles[s.id]) : "—"}</td>`).join("")}
-    <td class="n">${bs(p.debe)}</td><td class="n pagado">${p.pagado > 0 ? bs(p.pagado) : "—"}</td>
-    <td class="n">${p.saldo > 0 ? `<span class="saldo">${bs(p.saldo)}</span>` : `<span class="pill ok">Pagado</span>`}</td></tr>`).join("")}</tbody>
-  ${conTotales ? `<tfoot><tr><td>Total</td>
-    ${usados.map(s => `<td class="n">${bs(periodos.reduce((sum, p) => sum + (p.detalles[s.id] || 0), 0))}</td>`).join("")}
-    <td class="n">${bs(periodos.reduce((s, p) => s + p.debe, 0))}</td>
-    <td class="n pagado">${bs(periodos.reduce((s, p) => s + p.pagado, 0))}</td>
-    <td class="n saldo">${bs(periodos.reduce((s, p) => s + Math.max(0, p.saldo), 0))}</td></tr></tfoot>` : ""}
+    ${usados.map(s => `<td class="n">${p.detalles[s.id] > 0 ? m(p.detalles[s.id]) : "—"}</td>`).join("")}
+    <td class="n">${m(p.debe)}</td><td class="n pagado">${p.pagado > 0 ? m(p.pagado) : "—"}</td>
+    <td class="n">${p.saldo > 0 ? `<span class="saldo">${m(p.saldo)}</span>` : `<span class="pill ok">Pagado</span>`}</td></tr>`).join("")}</tbody>
+  <tfoot><tr><td>Total</td>
+    ${usados.map(s => `<td class="n">${m(periodos.reduce((sum, p) => sum + (p.detalles[s.id] || 0), 0))}</td>`).join("")}
+    <td class="n">${m(periodos.reduce((s, p) => s + p.debe, 0))}</td>
+    <td class="n pagado">${m(periodos.reduce((s, p) => s + p.pagado, 0))}</td>
+    <td class="n saldo">${m(periodos.reduce((s, p) => s + Math.max(0, p.saldo), 0))}</td></tr></tfoot>
   </table>`;
 };
 
@@ -169,23 +171,83 @@ export function imprimirDeuda({ cfg, persona, periodos, servicios, tarifas }) {
   return abrirImpresion(`Deuda acumulada — ${persona.nombre}`, documento(cfg, { titulo: "Estado de deuda", sub, contenido }), { cfg });
 }
 
-export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquidaciones, soloDeuda = false }) {
+// Cálculo de la liquidación de un mes: cómo se repartió cada factura entre los inquilinos que participaron.
+const calculoLiquidacion = (clave, liq, servicios, personas, tarifas) => {
+  const srv = serviciosDeLiq(liq);
+  const lineas = servicios.filter(s => Number(srv[s.id]?.totalFactura) > 0);
+  if (!lineas.length) return "";
+  const gente = personasDeLiquidacion(liq, personas);
+  const formulas = lineas.map(s => {
+    const reparto = srv[s.id].reparto || s.reparto;
+    const total = Number(srv[s.id].totalFactura);
+    const tf = totalFactorServicio(s, liq, gente);
+    const consumo = Number(tarifas?.[clave]?.[s.id + "_consumo"]) || 0;
+    const calc = reparto === SEReparto.UNIDAD || !tf
+      ? `${fmtMoney(total)} c/u`
+      : `${fmtMoney(total)} ÷ ${fmtNum(tf)} ${unidad(reparto)} = <b>${fmtPrecio(total / tf)}/${unidad(reparto)}</b>`;
+    return `<li><span>${esc(s.icon)} ${esc(s.label)}${consumo ? ` <i>(${fmtNum(consumo)} ${esc(s.unit)})</i>` : ""}</span><span class="num">${calc}</span></li>`;
+  }).join("");
+  const sumas = lineas.map(() => 0);
+  const filas = gente.map(p => {
+    const celdas = lineas.map(s => detalleServicio(s, liq, p, gente));
+    const total = celdas.reduce((t, d) => t + d.monto, 0);
+    if (total <= 0) return "";
+    celdas.forEach((d, i) => { sumas[i] += d.monto; });
+    return `<tr><td>${esc(p.nombre) || "—"}</td>${celdas.map((d, i) => {
+      if (d.monto <= 0) return `<td class="n">—</td>`;
+      const reparto = srv[lineas[i].id].reparto || lineas[i].reparto;
+      return `<td class="n">${reparto === SEReparto.UNIDAD ? "" : `<i>${fmtNum(d.factor)}×</i> `}${fmtMoney(d.monto)}</td>`;
+    }).join("")}<td class="n"><b>${fmtMoney(total)}</b></td></tr>`;
+  }).join("");
+  return `<div class="liq"><div class="liq-h">${esc(periodoDeKey(clave).label)}</div>
+    <ul class="liq-f">${formulas}</ul>
+    <table><thead><tr><th>Inquilino</th>${lineas.map(s => `<th class="n">${esc(s.icon)} ${esc(s.label)}</th>`).join("")}<th class="n">Total</th></tr></thead><tbody>${filas}</tbody>
+    <tfoot><tr><td>Total</td>${sumas.map(t => `<td class="n">${fmtMoney(t)}</td>`).join("")}<td class="n">${fmtMoney(sumas.reduce((a, b) => a + b, 0))}</td></tr></tfoot></table></div>`;
+};
+
+// Ajustes para que el resumen por persona entre en una sola hoja.
+const cssCompacto = `
+  @page { margin: 8mm; }
+  body { font-size:10.5px; line-height:1.35; }
+  .band { padding:12px 20px; } .band h1 { font-size:17px; margin-top:1px; } .band .sub { font-size:11px; }
+  .doc { padding:12px 18px 10px; }
+  .kpis { gap:6px; margin-bottom:10px; } .kpi { padding:5px 10px; } .kpi .v { font-size:14px; }
+  h3 { font-size:10.5px; margin:10px 0 5px; }
+  table { font-size:9.5px; } thead th { font-size:8.5px; padding:3px 5px; } tbody td, tfoot td { padding:2px 5px; }
+  .cols { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:6px; }
+  .liqs { display:grid; gap:6px; }
+  .box { margin-bottom:0; } .box-h { padding:4px 8px; } .box-h .t { font-size:11.5px; } .box-h .s { font-size:9.5px; }
+  .cols td:first-child { white-space:nowrap; }
+  .liq { border:1px solid var(--bd); border-radius:6px; overflow:hidden; break-inside:avoid; page-break-inside:avoid; }
+  .liq-h { background:var(--p); color:#fff; font-weight:800; font-size:10.5px; padding:3px 8px; }
+  .liq-f { list-style:none; padding:3px 8px; background:var(--bg); border-bottom:1px solid var(--bd); font-size:9.5px;
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:1px 20px; }
+  .liq-f li { display:flex; justify-content:space-between; gap:8px; }
+  .liq i, .liq-f i { color:var(--mu); font-style:normal; font-size:8.5px; }
+  .foot { margin-top:10px; padding-top:5px; font-size:8.5px; }
+  /* Menos negrita: solo se resaltan los totales y saldos */
+  h3, .kpi .v { font-weight:700; }
+  td b, .liq-f b { font-weight:400; }
+  .box-h .t, .liq-h, tfoot td, .saldo { font-weight:600; }
+  .liq td:last-child b { font-weight:600; }`;
+
+export function imprimirResumenPersonas({ cfg, filas, servicios, tarifas, liquidaciones, personas, soloDeuda = false }) {
   const deuda = filas.reduce((s, f) => s + Math.max(0, f.saldoTotal), 0);
   const cobrado = filas.reduce((s, f) => s + f.totalPagado, 0);
   const personasHtml = filas.map(f => `<div class="box">
-      <div class="box-h"><div><div class="t">${esc(f.nombre)}</div>${f.inmueble ? `<div class="s">${esc(f.inmueble)}</div>` : ""}</div>
-        <div class="r"><span>Debe <b>${bs(f.totalDebe)}</b></span><span>Pagó <b class="pagado">${bs(f.totalPagado)}</b></span>
-        <span>Saldo ${f.saldoTotal > 0 ? `<b class="saldo">${bs(f.saldoTotal)}</b>` : `<span class="pill ok">Al día</span>`}</span></div></div>
-      ${tablaEstadoCuenta(f.periodos, servicios)}
+      <div class="box-h"><div><div class="t">${esc(f.nombre)}</div>${f.inmueble ? `<div class="s">${esc(f.inmueble)}</div>` : ""}</div></div>
+      ${tablaEstadoCuenta(f.periodos, servicios, fmtMoney, false)}
     </div>`).join("");
   // Con soloDeuda, `filas` ya trae solo los meses con saldo pendiente.
   const claves = soloDeuda ? [...new Set(filas.flatMap(f => f.periodos.map(p => p.key)))].sort() : Object.keys(liquidaciones).sort();
-  const meses = filas.reduce((s, f) => s + f.periodos.length, 0);
+  // Meses distintos con deuda (no la suma de meses de cada inquilino).
+  const meses = claves.length;
+  const calculos = claves.map(k => calculoLiquidacion(k, liquidaciones[k], servicios, personas, tarifas)).join("");
   const contenido = `<div class="kpis">${kpi("Inquilinos", filas.length)}${kpi("Con deuda", filas.filter(f => f.saldoTotal > 0).length, "bad")}${soloDeuda ? kpi("Meses adeudados", meses, "bad") : kpi("Cobrado", bs(cobrado), "ok")}${kpi("Deuda total", bs(deuda), "hl")}</div>
-    <h3>${soloDeuda ? "Meses con saldo pendiente por inquilino" : "Estado de cuenta por inquilino"}</h3>${personasHtml}
-    ${tarjetaFacturas(claves, tarifas, servicios)}`;
+    <h3>${soloDeuda ? "Meses con saldo pendiente por inquilino" : "Estado de cuenta por inquilino"} (Bs.-)</h3><div class="cols">${personasHtml}</div>
+    ${calculos ? `<h3>Cálculo de la liquidación por mes (Bs.-)</h3><div class="liqs">${calculos}</div>` : ""}`;
   const sub = soloDeuda ? `Solo deudas · ${filas.length} inquilino(s) · ${meses} mes(es) adeudado(s)` : `${filas.length} inquilino(s) · ${Object.keys(liquidaciones).length} período(s) liquidados`;
-  return abrirImpresion("Resumen por Persona", documento(cfg, { titulo: soloDeuda ? "Resumen de deudas por persona" : "Resumen por persona", sub, contenido }), { cfg });
+  return abrirImpresion("Resumen por Persona", documento(cfg, { titulo: soloDeuda ? "Resumen de deudas por persona" : "Resumen por persona", sub, contenido }), { css: cssBase(cfg) + cssCompacto });
 }
 
 const lineasMontos = (pago, servicios) => servicios
